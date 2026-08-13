@@ -15,7 +15,8 @@ export const httpClient = create({
   headers: {
     Accept: 'application/json',
     'Content-Type': 'application/json',
-    'X-Client-Platform': 'mobile',
+    'x-client-platform': Platform.OS,
+    'x-client-platform-version': Platform.Version,
   },
 });
 
