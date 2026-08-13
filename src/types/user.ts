@@ -19,6 +19,4 @@ export interface User {
   status: UserStatus;
   createdAt: string;
   updatedAt: string;
-  accessToken: string;
-  refreshToken: string;
 }

@@ -1,5 +1,6 @@
 import { create } from 'axios';
 import { router } from 'expo-router';
+import { Platform } from 'react-native';
 
 import { tokenStorage } from '@/src/token-storage';
 
@@ -22,13 +23,34 @@ export const httpClient = create({
 
 httpClient.interceptors.request.use(
   async (config) => {
-    const accessToken = await tokenStorage.getAccessToken();
+    const [accessToken, refreshToken] = await Promise.all([
+      tokenStorage.getAccessToken(),
+      tokenStorage.getRefreshToken(),
+    ]);
 
     if (accessToken) {
-      config.headers.Authorization = `Bearer ${accessToken}`;
+      config.headers.authorization = `Bearer ${accessToken}`;
+    }
+
+    if (refreshToken) {
+      config.headers['x-refresh-token'] = refreshToken;
     }
 
     return config;
+  },
+  (error) => Promise.reject(error),
+);
+
+httpClient.interceptors.response.use(
+  async (response) => {
+    const accessToken = response.headers['x-access-token'];
+    const refreshToken = response.headers['x-refresh-token'];
+
+    if (accessToken && refreshToken) {
+      await tokenStorage.setTokens(accessToken, refreshToken);
+    }
+
+    return response;
   },
   (error) => Promise.reject(error),
 );

@@ -7,7 +7,6 @@ import { Button, Input, Text, XStack, YStack } from 'tamagui';
 
 import Logo from '@/assets/messinger-logo.svg';
 import { authService } from '@/src/services/auth';
-import { tokenStorage } from '@/src/token-storage';
 
 type AuthMode = 'sign-in' | 'sign-up';
 
@@ -34,9 +33,8 @@ export default function AuthPage() {
 
     try {
       if (mode === 'sign-in') {
-        const response = await authService.signIn({ loginKey });
+        await authService.signIn({ loginKey });
 
-        tokenStorage.setTokens(response.accessToken, response.refreshToken);
         router.replace('/chat');
         return;
       }
