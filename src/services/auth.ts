@@ -1,4 +1,4 @@
-import { httpClient } from '@/src/http-client';
+import { httpClient } from '@/src/clients/http-client';
 
 import type { ApiResponse } from '@/src/types/service-response';
 import type { User, UserRole } from '@/src/types/user';
