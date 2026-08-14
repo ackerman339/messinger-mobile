@@ -9,7 +9,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import type { ReactNode } from 'react';
 import type { Conversation } from '../types/conversation';
-import type { FileAttachment, UploadContentType } from '../types/file';
+import type { FileAttachment, LocalFile, UploadContentType } from '../types/file';
 
 export function ChatProvider({ children }: { children: ReactNode }) {
   const { user } = useUserContext();
@@ -165,7 +165,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setActiveConversationId(conversationId);
   }
 
-  async function handleReceiverId(id: string) {
+  function handleReceiverId(id: string) {
     setReceiverId(id);
   }
 
@@ -175,7 +175,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     return response.data.result;
   }
 
-  async function prepareAttachments(files: File[]) {
+  async function prepareAttachments(files: LocalFile[]) {
     const mappedFiles = files.map((file) => ({
       contentType: file.type as UploadContentType,
       size: file.size,

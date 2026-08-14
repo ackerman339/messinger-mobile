@@ -1,3 +1,5 @@
+import { router } from 'expo-router';
+
 import { connect, disconnect } from '@/src/clients/websocket-client';
 import { UserContext } from '@/src/contexts/user-context';
 import { authService } from '@/src/services/auth';
@@ -31,6 +33,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     await authService.logout();
     disconnect();
     setUser(null);
+    router.replace('/auth');
   };
 
   return <UserContext.Provider value={{ user, loading, logout }}>{children}</UserContext.Provider>;

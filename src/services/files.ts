@@ -1,7 +1,13 @@
 import { httpClient } from '@/src/clients/http-client';
-
 import type { ApiResponse } from '@/src/types/service-response';
-import type { DownloadDto, FileAttachment, PresignedUrl, UploadDto } from '../types/file';
+import { File } from 'expo-file-system';
+import type {
+  DownloadDto,
+  FileAttachment,
+  LocalFile,
+  PresignedUrl,
+  UploadDto,
+} from '../types/file';
 
 type UploadResponse = {
   presignedUrls: PresignedUrl[];
@@ -14,13 +20,28 @@ type DownloadResponse = {
 
 export const fileService = {
   // R2 related service
-  uploadFile: (file: File, url: string) =>
-    httpClient.put(url, file, {
-      withCredentials: false,
+  uploadFile: async (file: LocalFile, url: string) => {
+    const localFile = new File(file.uri);
+
+    if (!localFile.exists) {
+      throw new Error(`Local file does not exist: ${file.uri}`);
+    }
+
+    const arrayBuffer = await localFile.arrayBuffer();
+
+    const response = await fetch(url, {
+      method: 'PUT',
       headers: {
         'Content-Type': file.type,
       },
-    }),
+      body: arrayBuffer,
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`R2 upload failed: ${response.status} ${error}`);
+    }
+  },
 
   processUpload: async (data: UploadDto) => {
     const response = await httpClient.post<ApiResponse<UploadResponse>>('/upload', data);

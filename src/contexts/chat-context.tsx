@@ -2,7 +2,7 @@ import { createContext, useContext } from 'react';
 
 import type { Response } from '@/src/services/user';
 import type { Conversation } from '@/src/types/conversation';
-import type { FileAttachment } from '@/src/types/file';
+import type { FileAttachment, LocalFile } from '@/src/types/file';
 import type { User } from '@/src/types/user';
 
 export type ChatContextValue = {
@@ -16,7 +16,7 @@ export type ChatContextValue = {
   handleTypingStop: () => void;
   handleSendMessage: (content: string, attachments: FileAttachment[]) => void;
   handleCurrentConversation: (conversationId: string) => void;
-  prepareAttachments: (files: File[]) => Promise<FileAttachment[]>;
+  prepareAttachments: (files: LocalFile[]) => Promise<FileAttachment[]>;
   getUserByCode: (userCode: string) => Promise<Response>;
   handleReceiverId: (id: string) => void;
   unSetCurrentConversation: () => void;

@@ -12,6 +12,7 @@ export const UPLOAD_CONTENT_TYPES = [
   'audio/ogg',
   'audio/mp4',
   'audio/mpeg',
+  'audio/m4a',
 
   'application/pdf',
 
@@ -56,4 +57,11 @@ export type PresignedUrl = {
 
 export type DownloadDto = {
   attachmentId: string;
+};
+
+export type LocalFile = {
+  uri: string;
+  name: string;
+  size: number;
+  type: string;
 };
