@@ -1,7 +1,7 @@
 import { httpClient } from '@/src/clients/http-client';
 
-import type { Conversation } from '@/src/types/conversation';
-import type { ApiResponse } from '@/src/types/service-response';
+import type { Conversation, Message } from '@/src/types/conversation';
+import type { ApiResponse, Pagination, PaginationParams } from '@/src/types/service-response';
 
 export interface CreateGroupDto {
   name: string;
@@ -33,13 +33,22 @@ export interface GetConversationMessagesDto {
 }
 
 export const conversationService = {
-  getBootstrap: async () => {
-    const response = await httpClient.get<ApiResponse<Conversation[]>>('/conversation-list');
+  getBootstrap: async (params: PaginationParams) => {
+    const response = await httpClient.get<ApiResponse<Pagination<Conversation>>>(
+      '/conversation-list',
+      { params },
+    );
     return response.data.result;
   },
 
-  getMessages: (params: GetConversationMessagesDto) =>
-    httpClient.get('/conversation/messages', { params }),
+  getMessages: async (conversationId: string, params: PaginationParams) => {
+    const response = await httpClient.get<ApiResponse<Pagination<Message>>>(
+      '/conversation/messages',
+      { params: { ...params, conversationId } },
+    );
+
+    return response.data.result;
+  },
 
   // TODO: type responses
   createGroup: (data: CreateGroupDto) => httpClient.post('/conversation/create-group', data),
