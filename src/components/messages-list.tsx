@@ -1,7 +1,8 @@
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { ScrollView, Text, XStack, YStack } from 'tamagui';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, FlatList, type ListRenderItem } from 'react-native';
+import { Text, XStack, YStack } from 'tamagui';
 
 import { AudioAttachment } from '@/src/components/attachments/audio-attachment';
 import { FileAttachment } from '@/src/components/attachments/file-attachment';
@@ -9,64 +10,257 @@ import { ImageAttachment } from '@/src/components/attachments/image-attachment';
 import { VideoAttachment } from '@/src/components/attachments/video-attachment';
 import { useChatContext } from '@/src/contexts/chat-context';
 import { useUserContext } from '@/src/contexts/user-context';
+import { useCursorPagination } from '@/src/hooks/use-cursor-pagination';
+import { conversationService } from '@/src/services/conversation';
 import { fileService } from '@/src/services/files';
 
 import type { Message } from '@/src/types/conversation';
 
+const PAGE_SIZE = 20;
+
+/**
+ * Time to wait after the last content size change
+ * before performing the initial scroll.
+ */
+const INITIAL_LAYOUT_DEBOUNCE = 500;
+
 export function MessageList() {
   const { activeConversation } = useChatContext();
 
-  const scrollRef = useRef<ScrollView>(null);
+  const conversationId = activeConversation?.id ?? null;
 
-  const loading = false;
-  const error = null;
+  const listRef = useRef<FlatList<Message>>(null);
 
-  const messages: Message[] = useMemo(
-    () => activeConversation?.messages ?? [],
-    [activeConversation],
+  /**
+   * Indicates whether the list is still performing
+   * its initial layout.
+   */
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+
+  /**
+   * Prevents multiple pagination requests while the
+   * user remains at the beginning of the list.
+   */
+  const loadingMoreRef = useRef(false);
+
+  /**
+   * Debounces the initial scroll until the content
+   * size stops changing.
+   */
+  const initialScrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /**
+   * Ensures that the initial scroll is only performed once.
+   */
+  const initialScrollDoneRef = useRef(false);
+
+  const {
+    items: messages,
+    isLoading,
+    hasMore,
+    loadMore,
+    error,
+  } = useCursorPagination<Message>({
+    fetchPage: async (cursor) => {
+      if (!conversationId) {
+        return {
+          page: [],
+          nextCursor: null,
+        };
+      }
+
+      return conversationService.getMessages(conversationId, {
+        cursor,
+        limit: PAGE_SIZE,
+      });
+    },
+
+    reverse: true,
+
+    deps: [conversationId],
+  });
+
+  /**
+   * Reset the initial scroll state whenever the
+   * active conversation changes.
+   */
+  useEffect(() => {
+    setIsInitialLoad(true);
+
+    loadingMoreRef.current = false;
+    initialScrollDoneRef.current = false;
+
+    if (initialScrollTimerRef.current) {
+      clearTimeout(initialScrollTimerRef.current);
+      initialScrollTimerRef.current = null;
+    }
+  }, [conversationId]);
+
+  /**
+   * Handle changes to the total content size.
+   *
+   * Attachments can change the height of messages after
+   * they have been rendered. Every content size change
+   * resets the debounce timer.
+   *
+   * We only scroll once the content has stopped changing.
+   */
+  const handleContentSizeChange = useCallback(
+    (_width: number, _height: number) => {
+      if (!isInitialLoad) {
+        return;
+      }
+
+      if (initialScrollDoneRef.current) {
+        return;
+      }
+
+      if (messages.length === 0) {
+        return;
+      }
+
+      if (isLoading) {
+        return;
+      }
+
+      if (initialScrollTimerRef.current) {
+        clearTimeout(initialScrollTimerRef.current);
+      }
+
+      initialScrollTimerRef.current = setTimeout(() => {
+        if (initialScrollDoneRef.current) {
+          return;
+        }
+
+        initialScrollDoneRef.current = true;
+
+        /**
+         * Wait for the current layout pass to finish
+         * before scrolling.
+         */
+        requestAnimationFrame(() => {
+          listRef.current?.scrollToEnd({
+            animated: false,
+          });
+
+          /**
+           * Switch to normal scrolling mode after the
+           * initial position has been established.
+           */
+          setIsInitialLoad(false);
+        });
+      }, INITIAL_LAYOUT_DEBOUNCE);
+    },
+    [isInitialLoad, messages.length, isLoading],
   );
 
+  /**
+   * Load older messages when the user reaches
+   * the beginning of the list.
+   */
+  const handleStartReached = useCallback(() => {
+    if (!conversationId) {
+      return;
+    }
+
+    if (isInitialLoad) {
+      return;
+    }
+
+    if (!hasMore) {
+      return;
+    }
+
+    if (isLoading) {
+      return;
+    }
+
+    if (loadingMoreRef.current) {
+      return;
+    }
+
+    loadingMoreRef.current = true;
+
+    loadMore();
+  }, [conversationId, isInitialLoad, hasMore, isLoading, loadMore]);
+
+  /**
+   * Unlock pagination when the request finishes.
+   */
   useEffect(() => {
-    // Wait for React Native to finish rendering the messages
-    // before scrolling to the bottom.
-    requestAnimationFrame(() => {
-      scrollRef.current?.scrollToEnd({ animated: false });
-    });
-  }, [messages.length, activeConversation?.id]);
+    if (!isLoading) {
+      loadingMoreRef.current = false;
+    }
+  }, [isLoading]);
+
+  /**
+   * Clean up the initial scroll timer.
+   */
+  useEffect(() => {
+    return () => {
+      if (initialScrollTimerRef.current) {
+        clearTimeout(initialScrollTimerRef.current);
+      }
+    };
+  }, []);
+
+  const renderItem = useCallback<ListRenderItem<Message>>(
+    ({ item }) => <MessageBubble message={item} />,
+    [],
+  );
+
+  const keyExtractor = useCallback((item: Message) => item.id, []);
 
   if (!activeConversation) {
     return <EmptyState label='Selecciona una conversación' />;
   }
 
-  if (loading) {
+  if (isLoading && messages.length === 0) {
     return <EmptyState label='Cargando mensajes...' />;
   }
 
-  if (error) {
-    return <EmptyState label={error} />;
+  if (error && messages.length === 0) {
+    return <EmptyState label={error.message} />;
   }
 
-  if (!loading && messages.length === 0) {
+  if (!isLoading && messages.length === 0) {
     return <EmptyState label='No hay mensajes todavía' />;
   }
 
   return (
-    <ScrollView
-      ref={scrollRef}
-      flex={1}
-      bg='$bgApp'
+    <FlatList
+      ref={listRef}
+      data={messages}
+      keyExtractor={keyExtractor}
+      renderItem={renderItem}
+      onContentSizeChange={handleContentSizeChange}
+      onStartReached={handleStartReached}
+      onStartReachedThreshold={0.2}
+      maintainVisibleContentPosition={
+        isInitialLoad
+          ? undefined
+          : {
+              minIndexForVisible: 1,
+            }
+      }
+      ListHeaderComponent={
+        isLoading && messages.length > 0 ? (
+          <YStack py='$2' items='center'>
+            <ActivityIndicator />
+          </YStack>
+        ) : null
+      }
       showsVerticalScrollIndicator={false}
       contentContainerStyle={{
-        px: 12,
-        pt: 24,
-        pb: 20,
+        paddingHorizontal: 12,
+        paddingTop: 24,
+        paddingBottom: 20,
         gap: 8,
       }}
-    >
-      {messages.map((message) => (
-        <MessageBubble key={message.id} message={message} />
-      ))}
-    </ScrollView>
+      style={{
+        flex: 1,
+      }}
+    />
   );
 }
 
@@ -89,7 +283,10 @@ function MessageBubble({ message }: MessageBubbleProps) {
     let cancelled = false;
 
     async function getDownloadUrls() {
-      const downloads: { id: string; url: string }[] = [];
+      const downloads: {
+        id: string;
+        url: string;
+      }[] = [];
 
       for (const attachment of message.attachments) {
         try {
