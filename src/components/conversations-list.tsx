@@ -1,6 +1,8 @@
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Avatar, Button, Input, ScrollView, Text, XStack, YStack } from 'tamagui';
+import { useCallback, useEffect, useRef } from 'react';
+import { ActivityIndicator, FlatList, type ListRenderItem } from 'react-native';
+import { Avatar, Button, Input, Text, XStack, YStack } from 'tamagui';
 
 import { useChatContext } from '@/src/contexts/chat-context';
 import { useUserContext } from '@/src/contexts/user-context';
@@ -9,12 +11,68 @@ import { ChatMenu } from './chat-menu';
 import type { Conversation } from '@/src/types/conversation';
 
 export function ConversationList() {
-  const { conversations, activeConversation, loadingConversations, handleCurrentConversation } =
-    useChatContext();
+  const {
+    conversations,
+    activeConversation,
+    loadingConversations,
+    hasMoreConversations,
+    handleCurrentConversation,
+    loadMoreConversations,
+  } = useChatContext();
 
-  const conversationsItems = [...conversations.values()].sort(
+  /**
+   * Prevent multiple pagination requests while
+   * the end of the list remains visible.
+   */
+  const loadingMoreRef = useRef(false);
+
+  const conversationsItems = Array.from(conversations.values()).sort(
     (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
   );
+
+  /**
+   * Load the next page when the user reaches
+   * the end of the conversation list.
+   */
+  const handleEndReached = useCallback(() => {
+    if (loadingConversations) {
+      return;
+    }
+
+    if (!hasMoreConversations) {
+      return;
+    }
+
+    if (loadingMoreRef.current) {
+      return;
+    }
+
+    loadingMoreRef.current = true;
+
+    loadMoreConversations();
+  }, [loadingConversations, hasMoreConversations, loadMoreConversations]);
+
+  /**
+   * Unlock pagination after the request finishes.
+   */
+  useEffect(() => {
+    if (!loadingConversations) {
+      loadingMoreRef.current = false;
+    }
+  }, [loadingConversations]);
+
+  const renderItem = useCallback<ListRenderItem<Conversation>>(
+    ({ item }) => (
+      <ConversationRow
+        conversation={item}
+        isActive={item.id === activeConversation?.id}
+        onSelect={() => handleCurrentConversation(item.id)}
+      />
+    ),
+    [activeConversation?.id, handleCurrentConversation],
+  );
+
+  const keyExtractor = useCallback((item: Conversation) => item.id, []);
 
   return (
     <YStack flex={1} bg='$bgSidebar'>
@@ -36,28 +94,43 @@ export function ConversationList() {
         </XStack>
       </YStack>
 
-      <ScrollView
-        flex={1}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{
-          p: 8,
-        }}
-      >
-        {loadingConversations ? <ListState label='Cargando conversaciones...' /> : null}
-
-        {!loadingConversations && conversations.size === 0 ? (
-          <ListState label='No tienes conversaciones aún' />
-        ) : (
-          conversationsItems.map((conversation) => (
-            <ConversationRow
-              conversation={conversation}
-              isActive={conversation.id === activeConversation?.id}
-              key={conversation.id}
-              onSelect={() => handleCurrentConversation(conversation.id)}
-            />
-          ))
-        )}
-      </ScrollView>
+      {loadingConversations && conversationsItems.length === 0 ? (
+        <ListState label='Cargando conversaciones...' />
+      ) : !loadingConversations && conversationsItems.length === 0 ? (
+        <ListState label='No tienes conversaciones aún' />
+      ) : (
+        <FlatList
+          data={conversationsItems}
+          keyExtractor={keyExtractor}
+          renderItem={renderItem}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{
+            padding: 8,
+          }}
+          /**
+           * Trigger pagination when the user gets
+           * close to the end of the list.
+           */
+          onEndReached={handleEndReached}
+          /**
+           * Trigger pagination when the user is within
+           * 20% of the end of the list.
+           */
+          onEndReachedThreshold={0.2}
+          /**
+           * Show a loading indicator below the
+           * existing conversations while loading
+           * the next page.
+           */
+          ListFooterComponent={
+            loadingConversations && conversationsItems.length > 0 ? (
+              <YStack py='$3' items='center'>
+                <ActivityIndicator />
+              </YStack>
+            ) : null
+          }
+        />
+      )}
     </YStack>
   );
 }
@@ -94,7 +167,7 @@ function ConversationRow({ conversation, isActive, onSelect }: ConversationRowPr
       onPress={onSelect}
     >
       <Avatar circular size='$5' backgroundColor='$accent'>
-        <Avatar.Fallback bg='$accent' items='center' justify={'center'}>
+        <Avatar.Fallback bg='$accent' items='center' justify='center'>
           <Text fontSize='$3' fontWeight='600' color='white'>
             {avatarText}
           </Text>
@@ -141,7 +214,7 @@ function ConversationRow({ conversation, isActive, onSelect }: ConversationRowPr
 
 function ListState({ label }: { label: string }) {
   return (
-    <YStack px='$4' py='$8' items='center'>
+    <YStack flex={1} px='$4' py='$8' items='center' justify='center'>
       <Text fontSize='$3' color='$textSecondary' text='center'>
         {label}
       </Text>

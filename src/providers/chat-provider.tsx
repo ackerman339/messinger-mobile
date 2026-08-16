@@ -1,6 +1,7 @@
 import { wsClient } from '@/src/clients/websocket-client';
 import { ChatContext } from '@/src/contexts/chat-context';
 import { useUserContext } from '@/src/contexts/user-context';
+import { useCursorPagination } from '@/src/hooks/use-cursor-pagination';
 import { conversationService } from '@/src/services/conversation';
 import { fileService } from '@/src/services/files';
 import { userService } from '@/src/services/user';
@@ -18,10 +19,48 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [activeConversationId, setActiveConversationId] = useState('');
   const [receiverId, setReceiverId] = useState('');
 
-  //const [reloadConvesations, setReloadConversations] = useState(false);
-  const [loadingConversations, setLoadingConversations] = useState(true);
   const [typingUserIds, setTypingUserIds] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
+
+  const { items, isLoading, hasMore, loadMore } = useCursorPagination<Conversation>({
+    fetchPage: (cursor) =>
+      conversationService.getBootstrap({
+        cursor,
+        limit: 20,
+      }),
+    deps: [],
+  });
+
+  /**
+   * Merge paginated conversations into the context map.
+   *
+   * Existing conversations have priority because they may
+   * contain newer data received through WebSocket events.
+   */
+  useEffect(() => {
+    if (items.length === 0) {
+      return;
+    }
+
+    setConversations((previous) => {
+      const next = new Map(previous);
+
+      for (const conversation of items) {
+        const existing = next.get(conversation.id);
+
+        next.set(
+          conversation.id,
+          existing
+            ? {
+                ...conversation,
+                ...existing,
+              }
+            : conversation,
+        );
+      }
+
+      return next;
+    });
+  }, [items]);
 
   useEffect(() => {
     const unsubscribeNewMessage = wsClient.on(WS_SERVER_EVENTS.NEW_MESSAGE, (message) => {
@@ -121,36 +160,6 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       unsubscribeSentMessage();
     };
   }, [user]);
-
-  useEffect(() => {
-    let ignore = false;
-    /*  if (!reloadConvesations) {
-      return;
-    } */
-
-    async function loadConversations() {
-      try {
-        setError(null);
-        const conversations = await conversationService.getBootstrap();
-        if (ignore) return;
-        setConversations(
-          new Map(
-            conversations.map((conversation: Conversation) => [conversation.id, conversation]),
-          ),
-        );
-      } catch {
-        if (!ignore) setError('Could not load conversations');
-      } finally {
-        if (!ignore) setLoadingConversations(false);
-      }
-    }
-
-    loadConversations();
-
-    return () => {
-      ignore = true;
-    };
-  }, []);
 
   const activeConversation = useMemo(
     () => conversations.get(activeConversationId) || null,
@@ -254,9 +263,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         conversations,
         activeConversation,
         typingUserIds,
-        loadingConversations,
-        error,
+        loadingConversations: isLoading,
+        error: null,
         receiverId,
+        hasMoreConversations: hasMore,
         handleTypingStart,
         handleTypingStop,
         handleSendMessage,
@@ -265,6 +275,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         getUserByCode,
         handleReceiverId,
         unSetCurrentConversation,
+        loadMoreConversations: loadMore,
       }}
     >
       {children}
