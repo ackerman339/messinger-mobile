@@ -1,14 +1,20 @@
 import { AudioModule, RecordingPresets, setAudioModeAsync, useAudioRecorder } from 'expo-audio';
 import { randomUUID } from 'expo-crypto';
 import { File } from 'expo-file-system';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
+
+export type VoiceRecording = {
+  uri: string;
+  name: string;
+  size: number;
+  type: string;
+};
 
 export function useVoiceRecorder() {
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
   const [isRecording, setIsRecording] = useState(false);
-
-  const recordingUriRef = useRef<string | null>(null);
+  const [recording, setRecording] = useState<VoiceRecording | null>(null);
 
   async function startRecording() {
     const status = await AudioModule.requestRecordingPermissionsAsync();
@@ -25,6 +31,7 @@ export function useVoiceRecorder() {
     await recorder.prepareToRecordAsync();
     recorder.record();
 
+    setRecording(null);
     setIsRecording(true);
   }
 
@@ -48,16 +55,18 @@ export function useVoiceRecorder() {
       return null;
     }
 
-    recordingUriRef.current = uri;
-
     const file = new File(uri);
 
-    return {
+    const voiceRecording: VoiceRecording = {
       uri,
       name: `voice-${randomUUID()}.m4a`,
       size: file.size,
       type: 'audio/m4a',
     };
+
+    setRecording(voiceRecording);
+
+    return voiceRecording;
   }
 
   async function cancelRecording() {
@@ -66,19 +75,24 @@ export function useVoiceRecorder() {
     }
 
     setIsRecording(false);
+    setRecording(null);
 
     await setAudioModeAsync({
       playsInSilentMode: true,
       allowsRecording: false,
     });
+  }
 
-    recordingUriRef.current = null;
+  function deleteRecording() {
+    setRecording(null);
   }
 
   return {
     isRecording,
+    recording,
     startRecording,
     stopRecording,
     cancelRecording,
+    deleteRecording,
   };
 }

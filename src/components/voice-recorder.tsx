@@ -1,104 +1,78 @@
 import { Mic, Square, Trash2 } from 'lucide-react-native';
-import { Button, Text, XStack, YStack } from 'tamagui';
+import { Pressable } from 'react-native';
+import { Text, XStack, YStack } from 'tamagui';
 
-import { useChatContext } from '@/src/contexts/chat-context';
-import { useVoiceRecorder } from '@/src/hooks/use-voice-recorder';
-import { COLORS } from '@/src/lib/constants';
+type VoiceRecorderProps = {
+  isRecording: boolean;
+  onStart: () => void;
+  onStop: () => void;
+  onCancel: () => void;
+};
 
-export function VoiceRecorder() {
-  const { prepareAttachments, handleSendMessage } = useChatContext();
-
-  const { isRecording, startRecording, stopRecording, cancelRecording } = useVoiceRecorder();
-
-  async function handleStart() {
-    try {
-      await startRecording();
-    } catch (error) {
-      console.error('[voice] failed to start recording:', error);
-    }
-  }
-
-  async function handleStop() {
-    try {
-      const asset = await stopRecording();
-
-      if (!asset) {
-        return;
-      }
-
-      const attachments = await prepareAttachments([asset]);
-
-      await handleSendMessage('Nota de voz', attachments);
-    } catch (error) {
-      console.error('[voice] failed to stop recording:', error);
-    }
-  }
-
-  function handleCancel() {
-    cancelRecording();
-  }
-
+export function VoiceRecorder({ isRecording, onStart, onStop, onCancel }: VoiceRecorderProps) {
   if (!isRecording) {
     return (
-      <Button
-        circular
-        size='$3'
-        unstyled
-        items='center'
-        justify='center'
-        bg='transparent'
-        pressStyle={{
-          bg: '$backgroundHover',
+      <Pressable
+        style={{
+          width: 44,
+          height: 44,
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: 22,
         }}
-        onPress={handleStart}
+        onPress={onStart}
         accessibilityLabel='Grabar nota de voz'
       >
-        <Mic size={22} color={COLORS['text-secondary']} />
-      </Button>
+        <Mic size={22} color='#64748b' />
+      </Pressable>
     );
   }
 
   return (
-    <XStack items='center' gap='$2'>
-      <Button
-        circular
-        size='$4'
-        unstyled
-        items='center'
-        justify='center'
-        bg='transparent'
-        pressStyle={{
-          bg: '$backgroundHover',
+    <XStack flex={1} height={44} items='center' gap='$2'>
+      <Pressable
+        style={{
+          width: 44,
+          height: 44,
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: 22,
         }}
-        onPress={handleCancel}
+        onPress={onCancel}
         accessibilityLabel='Cancelar grabación'
       >
-        <Trash2 size={22} color={COLORS['text-secondary']} />
-      </Button>
+        <Trash2 size={22} color='#64748b' />
+      </Pressable>
 
-      <XStack flex={1} items='center' justify='center' gap='$2'>
-        <YStack width={8} height={8} bg='$red10' />
+      <XStack flex={1} height={44} items='center' justify='center' gap='$2'>
+        <YStack
+          width={8}
+          height={8}
+          bg='$red10'
+          style={{
+            borderRadius: 4,
+          }}
+        />
 
         <Text fontSize='$3' color='$textPrimary'>
           Grabando...
         </Text>
       </XStack>
 
-      <Button
-        circular
-        size='$4'
-        unstyled
-        items='center'
-        justify='center'
-        bg='$accent'
-        pressStyle={{
-          opacity: 0.8,
+      <Pressable
+        style={{
+          width: 44,
+          height: 44,
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: 22,
+          backgroundColor: '#007AFF',
         }}
-        onPress={handleStop}
-        accessibilityLabel='Detener grabación'
+        onPress={onStop}
+        accessibilityLabel='Detener y enviar nota de voz'
       >
         <Square size={18} color='white' fill='white' />
-      </Button>
+      </Pressable>
     </XStack>
   );
 }
