@@ -1,5 +1,5 @@
 import { ChevronRight, Smile } from 'lucide-react-native';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { Keyboard, Pressable, TextInput, View } from 'react-native';
 
 import { AttachmentMenu } from '@/src/components/attachment-menu';
@@ -9,53 +9,19 @@ import { useChatContext } from '@/src/contexts/chat-context';
 import type { LocalFile } from '@/src/types/file';
 
 export function MessageComposer() {
-  const {
-    activeConversation,
-    receiverId,
-    handleTypingStop,
-    handleTypingStart,
-    prepareAttachments,
-    handleSendMessage,
-  } = useChatContext();
+  const { activeConversation, receiverId, prepareAttachments, handleSendMessage } =
+    useChatContext();
 
   const [message, setMessage] = useState('');
 
-  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   const disabled = !activeConversation && !receiverId;
-
-  console.log('[MessageComposer] RENDER:', JSON.stringify(receiverId));
-
-  useEffect(() => {
-    return () => {
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
-
-      handleTypingStop();
-    };
-  }, [handleTypingStop]);
-
-  function stopTypingSoon() {
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-    }
-
-    typingTimeoutRef.current = setTimeout(() => {
-      handleTypingStop();
-    }, 700);
-  }
 
   function handleChange(value: string) {
     setMessage(value);
 
     if (!value.trim()) {
-      handleTypingStop();
       return;
     }
-
-    handleTypingStart();
-    stopTypingSoon();
   }
 
   function handleSubmit() {
@@ -68,7 +34,6 @@ export function MessageComposer() {
     handleSendMessage(content, []);
 
     setMessage('');
-    handleTypingStop();
 
     Keyboard.dismiss();
   }
@@ -97,7 +62,6 @@ export function MessageComposer() {
             editable={!disabled}
             value={message}
             onChangeText={handleChange}
-            onBlur={handleTypingStop}
             textAlignVertical='center'
             maxLength={5000}
             onSubmitEditing={(event) => {

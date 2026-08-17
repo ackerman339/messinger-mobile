@@ -1,160 +1,190 @@
-import { File, Paths } from 'expo-file-system';
-import { Image } from 'expo-image';
-import * as Sharing from 'expo-sharing';
 import { Download, X } from 'lucide-react-native';
-import { useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, StyleSheet, View } from 'react-native';
-import { Button } from 'tamagui';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Image, Modal, Pressable, useWindowDimensions } from 'react-native';
+import { Text, XStack, YStack } from 'tamagui';
+
+import { useAttachmentContext } from '@/src/contexts/attachment-context';
 
 type ImageAttachmentProps = {
-  url: string;
+  attachmentId: string;
   fileName: string;
 };
 
-export function ImageAttachment({ url, fileName }: ImageAttachmentProps) {
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const [downloading, setDownloading] = useState(false);
+export function ImageAttachment({ attachmentId, fileName }: ImageAttachmentProps) {
+  const { getDownloadUrl, downloadAttachment, getLocalUri, getDownloadState } =
+    useAttachmentContext();
 
-  async function handleDownload() {
-    if (downloading) {
+  const localUri = getLocalUri(attachmentId, fileName);
+
+  const state = getDownloadState(attachmentId);
+
+  const [previewUri, setPreviewUri] = useState<string | null>(localUri ?? null);
+
+  const [viewerVisible, setViewerVisible] = useState(false);
+
+  const { width, height } = useWindowDimensions();
+
+  /**
+   * Synchronize the preview with the
+   * locally downloaded file.
+   */
+  useEffect(() => {
+    if (!localUri) {
       return;
     }
 
-    try {
-      setDownloading(true);
+    setPreviewUri(localUri);
+  }, [localUri]);
 
-      const file = new File(Paths.cache, fileName);
-
-      const response = await fetch(url);
-
-      if (!response.ok) {
-        throw new Error('Failed to download image');
-      }
-
-      const blob = await response.blob();
-      const arrayBuffer = await blob.arrayBuffer();
-
-      file.write(new Uint8Array(arrayBuffer));
-
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(file.uri);
-      }
-    } catch (error) {
-      console.error('Failed to download image:', error);
-    } finally {
-      setDownloading(false);
+  /**
+   * Load the remote URL used for the
+   * image preview when no local file exists.
+   */
+  useEffect(() => {
+    if (localUri) {
+      return;
     }
+
+    let cancelled = false;
+
+    async function loadPreview() {
+      try {
+        const url = await getDownloadUrl(attachmentId);
+
+        if (cancelled) {
+          return;
+        }
+
+        setPreviewUri(url);
+      } catch (error) {
+        console.error('[ImageAttachment] Failed to load preview URL', error);
+      }
+    }
+
+    loadPreview();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [attachmentId, localUri, getDownloadUrl]);
+
+  /**
+   * Download the image and immediately
+   * switch the preview to the local file.
+   */
+  const handleDownload = async () => {
+    try {
+      const uri = await downloadAttachment(attachmentId, fileName);
+
+      setPreviewUri(uri);
+    } catch {
+      // Error is handled by the provider.
+    }
+  };
+
+  const handleOpenViewer = () => {
+    setViewerVisible(true);
+  };
+
+  const handleCloseViewer = () => {
+    setViewerVisible(false);
+  };
+
+  const isDownloaded = !!localUri || state.isDownloaded;
+
+  if (!previewUri) {
+    return (
+      <YStack width={240} height={180} items='center' justify='center'>
+        <ActivityIndicator />
+      </YStack>
+    );
   }
 
   return (
     <>
-      {/* Image preview inside the message */}
-      <Pressable onPress={() => setPreviewOpen(true)} style={styles.thumbnailContainer}>
-        <Image
-          source={{ uri: url }}
-          contentFit='cover'
-          transition={150}
-          style={styles.thumbnail}
-          accessibilityLabel={fileName}
-        />
-      </Pressable>
+      <YStack width={240} gap='$2'>
+        <Pressable onPress={handleOpenViewer}>
+          <Image
+            source={{
+              uri: previewUri,
+            }}
+            style={{
+              width: 240,
+              height: 180,
+              borderRadius: 8,
+            }}
+            resizeMode='cover'
+          />
+        </Pressable>
 
-      {/* Full-screen image preview */}
-      <Modal
-        visible={previewOpen}
-        transparent
-        animationType='fade'
-        onRequestClose={() => setPreviewOpen(false)}
-      >
-        <View style={styles.modal}>
-          <View style={styles.header}>
-            <Pressable onPress={() => setPreviewOpen(false)} style={styles.headerButton}>
-              <X size={24} color='white' />
-            </Pressable>
-
-            <Button
-              circular
-              size='$4'
-              unstyled
+        {!isDownloaded ? (
+          <Pressable onPress={handleDownload} disabled={state.isDownloading}>
+            <XStack
+              bg='$accent'
+              px='$3'
+              py='$2'
               items='center'
               justify='center'
-              bg='rgba(255,255,255,0.12)'
-              pressStyle={{
-                bg: 'rgba(255,255,255,0.2)',
+              gap='$2'
+              style={{
+                borderRadius: 8,
               }}
-              onPress={handleDownload}
-              disabled={downloading}
-              accessibilityLabel='Descargar imagen'
             >
-              {downloading ? (
-                <ActivityIndicator size='small' color='white' />
+              {state.isDownloading ? (
+                <ActivityIndicator color='white' />
               ) : (
-                <Download size={22} color='white' />
-              )}
-            </Button>
-          </View>
+                <>
+                  <Download size={18} color='white' />
 
-          <Pressable style={styles.imageContainer} onPress={() => setPreviewOpen(false)}>
-            <Image
-              source={{ uri: url }}
-              contentFit='contain'
-              transition={150}
-              style={styles.fullImage}
-              accessibilityLabel={fileName}
-            />
+                  <Text color='white'>Descargar</Text>
+                </>
+              )}
+            </XStack>
           </Pressable>
-        </View>
+        ) : null}
+
+        {state.error ? (
+          <Text fontSize='$2' color='$red10'>
+            {state.error}
+          </Text>
+        ) : null}
+      </YStack>
+
+      <Modal
+        visible={viewerVisible}
+        transparent
+        animationType='fade'
+        onRequestClose={handleCloseViewer}
+      >
+        <YStack flex={1} bg='black' items='center' justify='center'>
+          <Pressable
+            onPress={handleCloseViewer}
+            style={{
+              position: 'absolute',
+              top: 50,
+              right: 20,
+              zIndex: 10,
+            }}
+          >
+            <X size={28} color='white' />
+          </Pressable>
+
+          <Image
+            source={{
+              uri: previewUri,
+            }}
+            style={{
+              width,
+              height: height * 0.8,
+            }}
+            resizeMode='contain'
+          />
+
+          <Text position='absolute' color='white' numberOfLines={1} maxW='80%'>
+            {fileName}
+          </Text>
+        </YStack>
       </Modal>
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  thumbnailContainer: {
-    width: 240,
-    height: 180,
-    borderRadius: 8,
-    overflow: 'hidden',
-  },
-
-  thumbnail: {
-    width: '100%',
-    height: '100%',
-  },
-
-  modal: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.96)',
-  },
-
-  header: {
-    position: 'absolute',
-    top: 50,
-    left: 16,
-    right: 16,
-    zIndex: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-
-  headerButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.12)',
-  },
-
-  imageContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  fullImage: {
-    width: '100%',
-    height: '100%',
-  },
-});

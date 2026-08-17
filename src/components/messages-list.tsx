@@ -1,9 +1,10 @@
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { ActivityIndicator, FlatList, type ListRenderItem } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
+import { wsClient } from '@/src/clients/websocket-client';
 import { AudioAttachment } from '@/src/components/attachments/audio-attachment';
 import { FileAttachment } from '@/src/components/attachments/file-attachment';
 import { ImageAttachment } from '@/src/components/attachments/image-attachment';
@@ -12,17 +13,12 @@ import { useChatContext } from '@/src/contexts/chat-context';
 import { useUserContext } from '@/src/contexts/user-context';
 import { useCursorPagination } from '@/src/hooks/use-cursor-pagination';
 import { conversationService } from '@/src/services/conversation';
-import { fileService } from '@/src/services/files';
+import { WS_SERVER_EVENTS } from '@/src/types/websocket';
 
 import type { Message } from '@/src/types/conversation';
 
 const PAGE_SIZE = 20;
-
-/**
- * Time to wait after the last content size change
- * before performing the initial scroll.
- */
-const INITIAL_LAYOUT_DEBOUNCE = 500;
+const INITIAL_SCROLL_DELAY = 500;
 
 export function MessageList() {
   const { activeConversation } = useChatContext();
@@ -32,34 +28,36 @@ export function MessageList() {
   const listRef = useRef<FlatList<Message>>(null);
 
   /**
-   * Indicates whether the list is still performing
-   * its initial layout.
+   * Prevents an automatic scroll to the bottom
+   * when older messages are being loaded.
    */
-  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const isPaginatingRef = useRef(false);
 
   /**
-   * Prevents multiple pagination requests while the
-   * user remains at the beginning of the list.
+   * Indicates that the list should scroll to the bottom
+   * after new messages have been rendered.
+   */
+  const shouldScrollToBottomRef = useRef(false);
+
+  /**
+   * Indicates that the conversation has just changed
+   * and the initial position should be set to the bottom.
+   */
+  const initialScrollRef = useRef(true);
+
+  /**
+   * Prevents multiple pagination requests from being
+   * triggered while the user remains at the beginning.
    */
   const loadingMoreRef = useRef(false);
-
-  /**
-   * Debounces the initial scroll until the content
-   * size stops changing.
-   */
-  const initialScrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  /**
-   * Ensures that the initial scroll is only performed once.
-   */
-  const initialScrollDoneRef = useRef(false);
 
   const {
     items: messages,
     isLoading,
     hasMore,
-    loadMore,
     error,
+    loadMore,
+    setItems,
   } = useCursorPagination<Message>({
     fetchPage: async (cursor) => {
       if (!conversationId) {
@@ -81,78 +79,108 @@ export function MessageList() {
   });
 
   /**
-   * Reset the initial scroll state whenever the
-   * active conversation changes.
+   * Reset the scroll state whenever the active conversation changes.
    */
   useEffect(() => {
-    setIsInitialLoad(true);
-
+    initialScrollRef.current = true;
+    shouldScrollToBottomRef.current = true;
+    isPaginatingRef.current = false;
     loadingMoreRef.current = false;
-    initialScrollDoneRef.current = false;
-
-    if (initialScrollTimerRef.current) {
-      clearTimeout(initialScrollTimerRef.current);
-      initialScrollTimerRef.current = null;
-    }
   }, [conversationId]);
 
   /**
-   * Handle changes to the total content size.
+   * Subscribe to WebSocket message events.
    *
-   * Attachments can change the height of messages after
-   * they have been rendered. Every content size change
-   * resets the debounce timer.
-   *
-   * We only scroll once the content has stopped changing.
+   * This effect must not depend on `messages`,
+   * otherwise new listeners would be registered
+   * every time the message list changes.
    */
-  const handleContentSizeChange = useCallback(
-    (_width: number, _height: number) => {
-      if (!isInitialLoad) {
-        return;
-      }
+  useEffect(() => {
+    const unsubscribeNewMessage = wsClient.on(WS_SERVER_EVENTS.NEW_MESSAGE, (message) => {
+      /**
+       * Incoming messages should always keep the list at the bottom.
+       */
+      shouldScrollToBottomRef.current = true;
 
-      if (initialScrollDoneRef.current) {
-        return;
-      }
+      setItems((prev) => [...prev, message]);
+    });
 
-      if (messages.length === 0) {
-        return;
-      }
+    const unsubscribeSentMessage = wsClient.on(WS_SERVER_EVENTS.MESSAGE_SENT, (message) => {
+      /**
+       * Sent messages should keep the list at the bottom.
+       */
+      shouldScrollToBottomRef.current = true;
 
-      if (isLoading) {
-        return;
-      }
+      setItems((prev) => [...prev, message]);
+    });
 
-      if (initialScrollTimerRef.current) {
-        clearTimeout(initialScrollTimerRef.current);
-      }
+    return () => {
+      unsubscribeNewMessage();
+      unsubscribeSentMessage();
+    };
+  }, [setItems]);
 
-      initialScrollTimerRef.current = setTimeout(() => {
-        if (initialScrollDoneRef.current) {
-          return;
-        }
+  /**
+   * Scroll to the bottom after the initial page
+   * has finished loading.
+   */
+  useEffect(() => {
+    if (!conversationId) {
+      return;
+    }
 
-        initialScrollDoneRef.current = true;
+    if (isLoading) {
+      return;
+    }
 
-        /**
-         * Wait for the current layout pass to finish
-         * before scrolling.
-         */
-        requestAnimationFrame(() => {
-          listRef.current?.scrollToEnd({
-            animated: false,
-          });
+    if (messages.length === 0) {
+      return;
+    }
 
-          /**
-           * Switch to normal scrolling mode after the
-           * initial position has been established.
-           */
-          setIsInitialLoad(false);
-        });
-      }, INITIAL_LAYOUT_DEBOUNCE);
-    },
-    [isInitialLoad, messages.length, isLoading],
-  );
+    if (!initialScrollRef.current) {
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      listRef.current?.scrollToEnd({
+        animated: false,
+      });
+
+      initialScrollRef.current = false;
+    }, INITIAL_SCROLL_DELAY);
+
+    return () => clearTimeout(timeout);
+  }, [conversationId, isLoading, messages.length]);
+
+  /**
+   * Scroll to the bottom after a new message
+   * has been added to the list.
+   *
+   * This is skipped while older messages are being paginated.
+   */
+  useEffect(() => {
+    if (!shouldScrollToBottomRef.current) {
+      return;
+    }
+
+    if (isPaginatingRef.current) {
+      return;
+    }
+
+    if (messages.length === 0) {
+      return;
+    }
+
+    const frame = requestAnimationFrame(() => {
+      listRef.current?.scrollToEnd({
+        animated: true,
+      });
+
+      shouldScrollToBottomRef.current = false;
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [messages]);
 
   /**
    * Load older messages when the user reaches
@@ -160,10 +188,6 @@ export function MessageList() {
    */
   const handleStartReached = useCallback(() => {
     if (!conversationId) {
-      return;
-    }
-
-    if (isInitialLoad) {
       return;
     }
 
@@ -179,37 +203,39 @@ export function MessageList() {
       return;
     }
 
+    /**
+     * The next message update will come from pagination,
+     * not from a newly received message.
+     */
+    isPaginatingRef.current = true;
     loadingMoreRef.current = true;
 
     loadMore();
-  }, [conversationId, isInitialLoad, hasMore, isLoading, loadMore]);
+  }, [conversationId, hasMore, isLoading, loadMore]);
 
   /**
-   * Unlock pagination when the request finishes.
+   * Unlock pagination after the request finishes.
+   *
+   * `maintainVisibleContentPosition` keeps the previously
+   * visible message at the same position while new messages
+   * are inserted at the beginning.
    */
   useEffect(() => {
     if (!isLoading) {
       loadingMoreRef.current = false;
+
+      requestAnimationFrame(() => {
+        isPaginatingRef.current = false;
+      });
     }
   }, [isLoading]);
 
-  /**
-   * Clean up the initial scroll timer.
-   */
-  useEffect(() => {
-    return () => {
-      if (initialScrollTimerRef.current) {
-        clearTimeout(initialScrollTimerRef.current);
-      }
-    };
+  const renderItem = useCallback<ListRenderItem<Message>>(({ item }) => {
+    const key = item.messageId || item.id;
+    return <MessageBubble key={key} message={item} />;
   }, []);
 
-  const renderItem = useCallback<ListRenderItem<Message>>(
-    ({ item }) => <MessageBubble message={item} />,
-    [],
-  );
-
-  const keyExtractor = useCallback((item: Message) => item.id, []);
+  const keyExtractor = useCallback((item: Message) => item.messageId || item.id, []);
 
   if (!activeConversation) {
     return <EmptyState label='Selecciona una conversación' />;
@@ -233,16 +259,11 @@ export function MessageList() {
       data={messages}
       keyExtractor={keyExtractor}
       renderItem={renderItem}
-      onContentSizeChange={handleContentSizeChange}
       onStartReached={handleStartReached}
       onStartReachedThreshold={0.2}
-      maintainVisibleContentPosition={
-        isInitialLoad
-          ? undefined
-          : {
-              minIndexForVisible: 1,
-            }
-      }
+      maintainVisibleContentPosition={{
+        minIndexForVisible: 1,
+      }}
       ListHeaderComponent={
         isLoading && messages.length > 0 ? (
           <YStack py='$2' items='center'>
@@ -271,49 +292,7 @@ type MessageBubbleProps = {
 function MessageBubble({ message }: MessageBubbleProps) {
   const { user } = useUserContext();
 
-  const [downloads, setDownloads] = useState<Map<string, string>>(new Map());
-
   const isOwn = message.senderId === user?.id;
-
-  useEffect(() => {
-    if (!message.attachments?.length) {
-      return;
-    }
-
-    let cancelled = false;
-
-    async function getDownloadUrls() {
-      const downloads: {
-        id: string;
-        url: string;
-      }[] = [];
-
-      for (const attachment of message.attachments) {
-        try {
-          const result = await fileService.downloadFile({
-            attachmentId: attachment.id,
-          });
-
-          downloads.push({
-            id: attachment.id,
-            url: result.url,
-          });
-        } catch (error) {
-          console.error(`Failed to get download URL for attachment ${attachment.id}`, error);
-        }
-      }
-
-      if (!cancelled) {
-        setDownloads(new Map(downloads.map((download) => [download.id, download.url])));
-      }
-    }
-
-    getDownloadUrls();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [message]);
 
   return (
     <XStack width='100%' justify={isOwn ? 'flex-end' : 'flex-start'}>
@@ -335,15 +314,9 @@ function MessageBubble({ message }: MessageBubbleProps) {
 
         {message.attachments?.length ? (
           <YStack gap='$2' my='$2'>
-            {message.attachments.map((attachment) => {
-              const url = downloads.get(attachment.id);
-
-              if (!url) {
-                return null;
-              }
-
-              return <MessageAttachment key={attachment.id} attachment={attachment} url={url} />;
-            })}
+            {message.attachments.map((attachment) => (
+              <MessageAttachment key={attachment.id} attachment={attachment} />
+            ))}
           </YStack>
         ) : null}
 
@@ -367,25 +340,24 @@ function MessageBubble({ message }: MessageBubbleProps) {
 
 type MessageAttachmentProps = {
   attachment: Message['attachments'][number];
-  url: string;
 };
 
-function MessageAttachment({ attachment, url }: MessageAttachmentProps) {
-  const { contentType } = attachment;
+function MessageAttachment({ attachment }: MessageAttachmentProps) {
+  const { contentType, id, fileName } = attachment;
 
   if (contentType.startsWith('image/')) {
-    return <ImageAttachment url={url} fileName={attachment.fileName} />;
+    return <ImageAttachment attachmentId={id} fileName={fileName} />;
   }
 
   if (contentType.startsWith('video/')) {
-    return <VideoAttachment url={url} />;
+    return <VideoAttachment attachmentId={id} fileName={fileName} />;
   }
 
   if (contentType.startsWith('audio/')) {
-    return <AudioAttachment url={url} />;
+    return <AudioAttachment attachmentId={id} fileName={fileName} />;
   }
 
-  return <FileAttachment url={url} fileName={attachment.fileName} />;
+  return <FileAttachment attachmentId={id} fileName={fileName} contentType={contentType} />;
 }
 
 function EmptyState({ label }: { label: string }) {

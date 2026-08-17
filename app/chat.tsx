@@ -7,6 +7,7 @@ import { ConversationList } from '@/src/components/conversations-list';
 import { MessageComposer } from '@/src/components/message-composer';
 import { MessageList } from '@/src/components/messages-list';
 import { useChatContext } from '@/src/contexts/chat-context';
+import { AttachmentProvider } from '@/src/providers/attachment-provider';
 import { ChatProvider } from '@/src/providers/chat-provider';
 import { UserProvider } from '@/src/providers/user-provider';
 
@@ -37,10 +38,12 @@ export default function ChatPage() {
   return (
     <UserProvider>
       <ChatProvider>
-        <PortalProvider>
-          <ChatContent />
-          <PortalHost name='chat' />
-        </PortalProvider>
+        <AttachmentProvider>
+          <PortalProvider>
+            <ChatContent />
+            <PortalHost name='chat' />
+          </PortalProvider>
+        </AttachmentProvider>
       </ChatProvider>
     </UserProvider>
   );

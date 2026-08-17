@@ -1,5 +1,6 @@
 export const ACCESS_TOKEN_KEY = 'accessToken';
 export const REFRESH_TOKEN_KEY = 'refreshToken';
+export const URL_TTL = 47 * 60 * 60 * 1000;
 
 export const COLORS = {
   accent: '#54a9eb',
