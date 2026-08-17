@@ -97,7 +97,7 @@ export function AttachmentMenu({ disabled = false, onFilesSelected }: Attachment
       <Popover.Trigger asChild>
         <Button
           circular
-          size='$4'
+          size='$3'
           disabled={disabled}
           unstyled
           items='center'

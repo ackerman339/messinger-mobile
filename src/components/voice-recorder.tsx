@@ -42,7 +42,7 @@ export function VoiceRecorder() {
     return (
       <Button
         circular
-        size='$4'
+        size='$3'
         unstyled
         items='center'
         justify='center'

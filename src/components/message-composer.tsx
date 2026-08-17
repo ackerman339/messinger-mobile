@@ -50,8 +50,15 @@ export function MessageComposer() {
 
   return (
     <View className='border-t border-border bg-bg-app px-3 py-2'>
-      <View className='flex-row items-end gap-2'>
+      <View className='flex-row items-end gap-x-1'>
         <AttachmentMenu disabled={disabled} onFilesSelected={uploadFiles} />
+        <Pressable
+          disabled={disabled}
+          className='h-10 w-10 items-center justify-center rounded-full'
+          onPress={() => {}}
+        >
+          <Smile size={22} color={disabled ? '#94a3b8' : '#64748b'} />
+        </Pressable>
 
         <View className='min-h-11 flex-1 rounded-xl bg-slate-100 px-4 py-2'>
           <TextInput
@@ -71,24 +78,17 @@ export function MessageComposer() {
             }}
           />
         </View>
-
-        <VoiceRecorder />
-
-        <Pressable
-          disabled={disabled}
-          className='h-11 w-11 items-center justify-center rounded-full'
-          onPress={() => {}}
-        >
-          <Smile size={22} color={disabled ? '#94a3b8' : '#64748b'} />
-        </Pressable>
-
-        <Pressable
-          disabled={disabled || !message.trim()}
-          className='h-11 w-11 items-center justify-center rounded-full bg-accent disabled:opacity-40'
-          onPress={handleSubmit}
-        >
-          <ChevronRight size={22} color='white' />
-        </Pressable>
+        {message ? (
+          <Pressable
+            disabled={disabled || !message.trim()}
+            className='h-11 w-11 items-center justify-center rounded-full bg-accent disabled:opacity-40'
+            onPress={handleSubmit}
+          >
+            <ChevronRight size={22} color='white' />
+          </Pressable>
+        ) : (
+          <VoiceRecorder />
+        )}
       </View>
     </View>
   );
