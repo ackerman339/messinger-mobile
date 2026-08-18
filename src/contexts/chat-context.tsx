@@ -19,6 +19,7 @@ export type ChatContextValue = {
   handleReceiverId: (id: string) => void;
   unSetCurrentConversation: () => void;
   loadMoreConversations: () => void;
+  handleNewConversation: (conversation: Conversation) => void;
 };
 
 export const ChatContext = createContext<ChatContextValue>({
@@ -35,10 +36,15 @@ export const ChatContext = createContext<ChatContextValue>({
   handleReceiverId: () => {},
   unSetCurrentConversation: () => {},
   loadMoreConversations: () => {},
+  handleNewConversation: () => {},
 });
 
 export function useChatContext() {
   const ctx = useContext(ChatContext);
-  if (!ctx) throw new Error('useUser must be used within a <UserProvider>');
+
+  if (!ctx) {
+    throw new Error('useChatContext must be used within a <ChatProvider>');
+  }
+
   return ctx;
 }

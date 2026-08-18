@@ -26,10 +26,13 @@ export interface DeleteConversationDto {
   conversationId: string;
 }
 
-export interface GetConversationMessagesDto {
+export interface DeleteMessagesDto {
   conversationId: string;
-  cursor?: string;
-  limit?: number; // defaults to 30 on the server, max 50
+  messagesIds: string[];
+}
+
+export interface ResetUnreadMessagesDto {
+  conversationId: string;
 }
 
 export const conversationService = {
@@ -48,6 +51,14 @@ export const conversationService = {
     );
 
     return response.data.result;
+  },
+
+  deleteMessages: async (data: DeleteMessagesDto) => {
+    await httpClient.delete('/conversation/delete-messages', { data });
+  },
+
+  resetUnreadMessagesCount: async (data: ResetUnreadMessagesDto) => {
+    await httpClient.patch('/conversation/reset-unread-messages-count', data);
   },
 
   // TODO: type responses

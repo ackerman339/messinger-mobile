@@ -1,7 +1,7 @@
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { useCallback, useEffect, useRef } from 'react';
-import { ActivityIndicator, FlatList, type ListRenderItem } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, FlatList, Pressable, type ListRenderItem } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { wsClient } from '@/src/clients/websocket-client';
@@ -9,6 +9,7 @@ import { AudioAttachment } from '@/src/components/attachments/audio-attachment';
 import { FileAttachment } from '@/src/components/attachments/file-attachment';
 import { ImageAttachment } from '@/src/components/attachments/image-attachment';
 import { VideoAttachment } from '@/src/components/attachments/video-attachment';
+import { MessageSelectionBar } from '@/src/components/message-selection-bar';
 import { useChatContext } from '@/src/contexts/chat-context';
 import { useUserContext } from '@/src/contexts/user-context';
 import { useCursorPagination } from '@/src/hooks/use-cursor-pagination';
@@ -27,37 +28,21 @@ export function MessageList() {
 
   const listRef = useRef<FlatList<Message>>(null);
 
-  /**
-   * Prevents an automatic scroll to the bottom
-   * when older messages are being loaded.
-   */
   const isPaginatingRef = useRef(false);
-
-  /**
-   * Indicates that the list should scroll to the bottom
-   * after new messages have been rendered.
-   */
   const shouldScrollToBottomRef = useRef(false);
-
-  /**
-   * Indicates that the conversation has just changed
-   * and the initial position should be set to the bottom.
-   */
   const initialScrollRef = useRef(true);
-
-  /**
-   * Prevents multiple pagination requests from being
-   * triggered while the user remains at the beginning.
-   */
   const loadingMoreRef = useRef(false);
+
+  const [selectedMessageIds, setSelectedMessageIds] = useState<string[]>([]);
+  const [isDeletingMessagesLoading, setIsDeletingMessagesLoading] = useState(false);
 
   const {
     items: messages,
     isLoading,
     hasMore,
-    error,
     loadMore,
     setItems,
+    error,
   } = useCursorPagination<Message>({
     fetchPage: async (cursor) => {
       if (!conversationId) {
@@ -79,36 +64,36 @@ export function MessageList() {
   });
 
   /**
-   * Reset the scroll state whenever the active conversation changes.
+   * Reset state when changing conversation.
    */
   useEffect(() => {
     initialScrollRef.current = true;
     shouldScrollToBottomRef.current = true;
     isPaginatingRef.current = false;
     loadingMoreRef.current = false;
+
+    setSelectedMessageIds([]);
   }, [conversationId]);
 
   /**
-   * Subscribe to WebSocket message events.
-   *
-   * This effect must not depend on `messages`,
-   * otherwise new listeners would be registered
-   * every time the message list changes.
+   * WebSocket messages.
    */
   useEffect(() => {
     const unsubscribeNewMessage = wsClient.on(WS_SERVER_EVENTS.NEW_MESSAGE, (message) => {
-      /**
-       * Incoming messages should always keep the list at the bottom.
-       */
+      if (message.conversation.id !== conversationId) {
+        return;
+      }
+
       shouldScrollToBottomRef.current = true;
 
       setItems((prev) => [...prev, message]);
     });
 
     const unsubscribeSentMessage = wsClient.on(WS_SERVER_EVENTS.MESSAGE_SENT, (message) => {
-      /**
-       * Sent messages should keep the list at the bottom.
-       */
+      if (message.conversation.id !== conversationId) {
+        return;
+      }
+
       shouldScrollToBottomRef.current = true;
 
       setItems((prev) => [...prev, message]);
@@ -118,11 +103,10 @@ export function MessageList() {
       unsubscribeNewMessage();
       unsubscribeSentMessage();
     };
-  }, [setItems]);
+  }, [conversationId, setItems]);
 
   /**
-   * Scroll to the bottom after the initial page
-   * has finished loading.
+   * Initial scroll to bottom.
    */
   useEffect(() => {
     if (!conversationId) {
@@ -147,16 +131,14 @@ export function MessageList() {
       });
 
       initialScrollRef.current = false;
+      shouldScrollToBottomRef.current = false;
     }, INITIAL_SCROLL_DELAY);
 
     return () => clearTimeout(timeout);
   }, [conversationId, isLoading, messages.length]);
 
   /**
-   * Scroll to the bottom after a new message
-   * has been added to the list.
-   *
-   * This is skipped while older messages are being paginated.
+   * Scroll to bottom after new messages.
    */
   useEffect(() => {
     if (!shouldScrollToBottomRef.current) {
@@ -183,8 +165,7 @@ export function MessageList() {
   }, [messages]);
 
   /**
-   * Load older messages when the user reaches
-   * the beginning of the list.
+   * Load older messages.
    */
   const handleStartReached = useCallback(() => {
     if (!conversationId) {
@@ -203,10 +184,6 @@ export function MessageList() {
       return;
     }
 
-    /**
-     * The next message update will come from pagination,
-     * not from a newly received message.
-     */
     isPaginatingRef.current = true;
     loadingMoreRef.current = true;
 
@@ -214,11 +191,7 @@ export function MessageList() {
   }, [conversationId, hasMore, isLoading, loadMore]);
 
   /**
-   * Unlock pagination after the request finishes.
-   *
-   * `maintainVisibleContentPosition` keeps the previously
-   * visible message at the same position while new messages
-   * are inserted at the beginning.
+   * Unlock pagination.
    */
   useEffect(() => {
     if (!isLoading) {
@@ -230,10 +203,74 @@ export function MessageList() {
     }
   }, [isLoading]);
 
-  const renderItem = useCallback<ListRenderItem<Message>>(({ item }) => {
-    const key = item.messageId || item.id;
-    return <MessageBubble key={key} message={item} />;
+  /**
+   * Select/unselect a message.
+   */
+  const toggleMessageSelection = useCallback((messageId: string) => {
+    setSelectedMessageIds((current) => {
+      if (current.includes(messageId)) {
+        return current.filter((id) => id !== messageId);
+      }
+
+      return [...current, messageId];
+    });
   }, []);
+
+  /**
+   * Clear selection.
+   */
+  const clearSelection = useCallback(() => {
+    setSelectedMessageIds([]);
+  }, []);
+
+  /**
+   * Delete selected messages.
+   */
+  const deleteMessages = useCallback(async () => {
+    if (!conversationId) {
+      return;
+    }
+
+    if (selectedMessageIds.length === 0) {
+      return;
+    }
+
+    try {
+      setIsDeletingMessagesLoading(true);
+
+      await conversationService.deleteMessages({
+        conversationId,
+        messagesIds: selectedMessageIds,
+      });
+
+      setItems((current) =>
+        current.filter((message) => {
+          const messageId = message.messageId || message.id;
+
+          return !selectedMessageIds.includes(messageId);
+        }),
+      );
+
+      setSelectedMessageIds([]);
+    } finally {
+      setIsDeletingMessagesLoading(false);
+    }
+  }, [conversationId, selectedMessageIds, setItems]);
+
+  const renderItem = useCallback<ListRenderItem<Message>>(
+    ({ item }) => {
+      const messageId = item.messageId || item.id;
+
+      return (
+        <MessageBubble
+          message={item}
+          selected={selectedMessageIds.includes(messageId)}
+          onSelect={toggleMessageSelection}
+        />
+      );
+    },
+    [selectedMessageIds, toggleMessageSelection],
+  );
 
   const keyExtractor = useCallback((item: Message) => item.messageId || item.id, []);
 
@@ -254,86 +291,121 @@ export function MessageList() {
   }
 
   return (
-    <FlatList
-      ref={listRef}
-      data={messages}
-      keyExtractor={keyExtractor}
-      renderItem={renderItem}
-      onStartReached={handleStartReached}
-      onStartReachedThreshold={0.2}
-      maintainVisibleContentPosition={{
-        minIndexForVisible: 1,
-      }}
-      ListHeaderComponent={
-        isLoading && messages.length > 0 ? (
-          <YStack py='$2' items='center'>
-            <ActivityIndicator />
-          </YStack>
-        ) : null
-      }
-      showsVerticalScrollIndicator={false}
-      contentContainerStyle={{
-        paddingHorizontal: 12,
-        paddingTop: 24,
-        paddingBottom: 20,
-        gap: 8,
-      }}
-      style={{
-        flex: 1,
-      }}
-    />
+    <YStack flex={1} position='relative'>
+      <FlatList
+        ref={listRef}
+        data={messages}
+        keyExtractor={keyExtractor}
+        renderItem={renderItem}
+        onStartReached={handleStartReached}
+        onStartReachedThreshold={0.2}
+        maintainVisibleContentPosition={{
+          minIndexForVisible: 1,
+        }}
+        ListHeaderComponent={
+          isLoading && messages.length > 0 ? (
+            <YStack py='$2' items='center'>
+              <ActivityIndicator />
+            </YStack>
+          ) : null
+        }
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{
+          paddingHorizontal: 12,
+          paddingTop: selectedMessageIds.length > 0 ? 76 : 24,
+          paddingBottom: 20,
+          gap: 8,
+        }}
+        style={{
+          flex: 1,
+        }}
+      />
+
+      {selectedMessageIds.length > 0 && (
+        <MessageSelectionBar
+          count={selectedMessageIds.length}
+          isLoading={isDeletingMessagesLoading}
+          onDelete={deleteMessages}
+          onClose={clearSelection}
+        />
+      )}
+    </YStack>
   );
 }
 
 type MessageBubbleProps = {
   message: Message;
+  selected: boolean;
+  onSelect: (messageId: string) => void;
 };
 
-function MessageBubble({ message }: MessageBubbleProps) {
+function MessageBubble({ message, selected, onSelect }: MessageBubbleProps) {
   const { user } = useUserContext();
 
   const isOwn = message.senderId === user?.id;
+  const messageId = message.messageId || message.id;
+
+  function handlePress() {
+    if (!isOwn) {
+      return;
+    }
+
+    onSelect(messageId);
+  }
 
   return (
     <XStack width='100%' justify={isOwn ? 'flex-end' : 'flex-start'}>
-      <YStack
-        maxW='76%'
-        minW={0}
-        bg={isOwn ? '$bgBubbleOwn' : '$bgBubbleOther'}
-        borderBottomRightRadius={isOwn ? '$1' : '$3'}
-        borderBottomLeftRadius={isOwn ? '$3' : '$1'}
-        px='$3'
-        py='$2'
-        elevation='$1'
+      <Pressable
+        onPress={handlePress}
+        disabled={!isOwn}
+        style={{
+          maxWidth: '76%',
+          borderRadius: 8,
+          borderBottomRightRadius: isOwn ? 4 : 8,
+          borderBottomLeftRadius: isOwn ? 8 : 4,
+          opacity: 1,
+        }}
       >
-        {message.content ? (
-          <Text fontSize='$3' lineHeight={20} color='$textPrimary'>
-            {message.content}
-          </Text>
-        ) : null}
-
-        {message.attachments?.length ? (
-          <YStack gap='$2' my='$2'>
-            {message.attachments.map((attachment) => (
-              <MessageAttachment key={attachment.id} attachment={attachment} />
-            ))}
-          </YStack>
-        ) : null}
-
-        <XStack justify='flex-end' items='center' gap='$1' mt='$1'>
-          <Text fontSize='$1' color='$textSecondary'>
-            {format(new Date(message.createdAt), 'dd MMM HH:mm', {
-              locale: es,
-            })}
-          </Text>
-
-          {isOwn ? (
-            <Text fontSize='$2' color='$accent'>
-              ✓✓
+        <YStack
+          minW={0}
+          bg={isOwn ? '$bgBubbleOwn' : '$bgBubbleOther'}
+          borderBottomRightRadius={isOwn ? '$1' : '$3'}
+          borderBottomLeftRadius={isOwn ? '$3' : '$1'}
+          px='$3'
+          py='$2'
+          elevation='$1'
+          borderWidth={selected ? 2 : 0}
+          borderColor={selected ? '$accent' : 'transparent'}
+        >
+          {message.content ? (
+            <Text fontSize='$3' lineHeight={20} color='$textPrimary'>
+              {message.content}
             </Text>
           ) : null}
-        </XStack>
-      </YStack>
+
+          {message.attachments?.length ? (
+            <YStack gap='$2' my='$2'>
+              {message.attachments.map((attachment) => (
+                <MessageAttachment key={attachment.id} attachment={attachment} />
+              ))}
+            </YStack>
+          ) : null}
+
+          <XStack justify='flex-end' items='center' gap='$1' mt='$1'>
+            <Text fontSize='$1' color='$textSecondary'>
+              {format(new Date(message.createdAt), 'dd MMM HH:mm', {
+                locale: es,
+              })}
+            </Text>
+
+            {isOwn ? (
+              <Text fontSize='$2' color='$accent'>
+                ✓✓
+              </Text>
+            ) : null}
+          </XStack>
+        </YStack>
+      </Pressable>
     </XStack>
   );
 }

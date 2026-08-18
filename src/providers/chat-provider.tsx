@@ -1,3 +1,6 @@
+import type { ReactNode } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+
 import { wsClient } from '@/src/clients/websocket-client';
 import { ChatContext } from '@/src/contexts/chat-context';
 import { useUserContext } from '@/src/contexts/user-context';
@@ -6,11 +9,9 @@ import { conversationService } from '@/src/services/conversation';
 import { fileService } from '@/src/services/files';
 import { userService } from '@/src/services/user';
 import { WS_CLIENT_EVENTS } from '@/src/types/websocket';
-import { useEffect, useMemo, useState } from 'react';
 
-import type { ReactNode } from 'react';
-import type { Conversation } from '../types/conversation';
-import type { FileAttachment, LocalFile, UploadContentType } from '../types/file';
+import type { Conversation } from '@/src/types/conversation';
+import type { FileAttachment, LocalFile, UploadContentType } from '@/src/types/file';
 
 export function ChatProvider({ children }: { children: ReactNode }) {
   const { user } = useUserContext();
@@ -60,8 +61,28 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     });
   }, [items]);
 
+  /**
+   * Add a new conversation to the list.
+   *
+   * This is used when a message arrives for a conversation
+   * that wasn't included in the current pagination pages.
+   */
+  function handleNewConversation(conversation: Conversation) {
+    setConversations((previous) => {
+      if (previous.has(conversation.id)) {
+        return previous;
+      }
+
+      const next = new Map(previous);
+
+      next.set(conversation.id, conversation);
+
+      return next;
+    });
+  }
+
   const activeConversation = useMemo(
-    () => conversations.get(activeConversationId) || null,
+    () => conversations.get(activeConversationId) ?? null,
     [conversations, activeConversationId],
   );
 
@@ -129,7 +150,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }
 
     const targetReceiverId =
-      receiverId || activeConversation?.members.filter((member) => member.id !== user?.id)[0].id;
+      receiverId ||
+      activeConversation?.members.find((member) => member.userId !== user?.id)?.userId;
 
     if (!targetReceiverId) {
       return;
@@ -158,6 +180,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         handleReceiverId,
         unSetCurrentConversation,
         loadMoreConversations: loadMore,
+        handleNewConversation,
       }}
     >
       {children}

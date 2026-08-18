@@ -1,8 +1,7 @@
-import { useState } from 'react';
-import { Button, Popover, Separator, Text, YStack } from 'tamagui';
-
 import * as Clipboard from 'expo-clipboard';
 import { Copy, LogOut, Menu, MessageCircle } from 'lucide-react-native';
+import { useState, type ReactNode } from 'react';
+import { Button, Popover, Separator, Text, YStack } from 'tamagui';
 
 import { useUserContext } from '@/src/contexts/user-context';
 import { COLORS } from '@/src/lib/constants';
@@ -39,12 +38,14 @@ export function ChatMenu() {
             size='$4'
             unstyled
             items='center'
-            justify={'center'}
+            justify='center'
             bg='transparent'
             pressStyle={{
               bg: '$backgroundHover',
             }}
-            accessibilityLabel='Menu'
+            accessibilityRole='button'
+            accessibilityLabel='Abrir menú'
+            accessibilityHint='Abre las opciones de conversación'
           >
             <Menu size={22} color={COLORS['text-secondary']} />
           </Button>
@@ -89,7 +90,7 @@ export function ChatMenu() {
 }
 
 type MenuItemProps = {
-  icon: React.ReactNode;
+  icon: ReactNode;
   label: string;
   onPress: () => void;
   color?: '$textPrimary' | '$red10';
@@ -100,6 +101,7 @@ function MenuItem({ icon, label, onPress, color = '$textPrimary' }: MenuItemProp
     <Button
       unstyled
       width='100%'
+      minH={40}
       flexDirection='row'
       items='center'
       gap='$3'
@@ -110,6 +112,8 @@ function MenuItem({ icon, label, onPress, color = '$textPrimary' }: MenuItemProp
         bg: '$backgroundHover',
       }}
       onPress={onPress}
+      accessibilityRole='button'
+      accessibilityLabel={label}
     >
       {icon}
 

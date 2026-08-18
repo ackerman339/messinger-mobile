@@ -12,7 +12,8 @@ type NewMessageDialogProps = {
 };
 
 export function NewMessageDialog({ open, onOpenChange }: NewMessageDialogProps) {
-  const { getUserByCode, receiverId, handleReceiverId } = useChatContext();
+  const { getUserByCode, receiverId, handleReceiverId, unSetCurrentConversation } =
+    useChatContext();
 
   const [userCode, setUserCode] = useState('');
   const [loading, setLoading] = useState(false);
@@ -27,7 +28,14 @@ export function NewMessageDialog({ open, onOpenChange }: NewMessageDialogProps) 
 
       const user = await getUserByCode(userCode.trim());
 
+      /**
+       * This is important.
+       *
+       * A "new message" should not remain attached
+       * to the conversation that was previously active.
+       */
       handleReceiverId(user.id);
+      unSetCurrentConversation();
     } catch {
       setError('No encontramos ese usuario');
     } finally {
@@ -65,9 +73,10 @@ export function NewMessageDialog({ open, onOpenChange }: NewMessageDialogProps) 
           p={0}
           bg='$bgApp'
           self='center'
-          my={'auto'}
+          my='auto'
         >
           <YStack>
+            {/* Header */}
             <XStack
               height={56}
               items='center'
@@ -91,6 +100,8 @@ export function NewMessageDialog({ open, onOpenChange }: NewMessageDialogProps) 
                   pressStyle={{
                     bg: '$backgroundHover',
                   }}
+                  accessibilityRole='button'
+                  accessibilityLabel='Cerrar'
                 >
                   <X size={24} color={COLORS['text-secondary']} />
                 </Button>
@@ -99,15 +110,27 @@ export function NewMessageDialog({ open, onOpenChange }: NewMessageDialogProps) 
 
             {!receiverId ? (
               <YStack p='$4'>
+                {/* User code label */}
                 <Text mb='$2' fontSize='$3' fontWeight='500' color='$textPrimary'>
                   Código del usuario
                 </Text>
 
+                {/* User code */}
                 <Input
                   autoFocus
                   height={44}
                   value={userCode}
-                  onChangeText={setUserCode}
+                  onChangeText={(value) => {
+                    setUserCode(value);
+
+                    /**
+                     * Remove the previous error as soon
+                     * as the user starts correcting the code.
+                     */
+                    if (error) {
+                      setError(null);
+                    }
+                  }}
                   onSubmitEditing={handleContinue}
                   returnKeyType='go'
                   placeholder='Ej: A7F92K'
@@ -122,12 +145,14 @@ export function NewMessageDialog({ open, onOpenChange }: NewMessageDialogProps) 
                   }}
                 />
 
+                {/* Error */}
                 {error ? (
                   <Text mt='$2' fontSize='$3' color='$red10'>
                     {error}
                   </Text>
                 ) : null}
 
+                {/* Continue */}
                 <Button
                   mt='$4'
                   height={44}

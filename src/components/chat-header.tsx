@@ -1,11 +1,10 @@
-import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
 import { ArrowLeft, MoreVertical } from 'lucide-react-native';
 import { Avatar, Button, Text, XStack, YStack } from 'tamagui';
 
 import { useChatContext } from '@/src/contexts/chat-context';
 import { useUserContext } from '@/src/contexts/user-context';
 import { COLORS } from '@/src/lib/constants';
+import { formatLastSeen } from '@/src/lib/utils';
 
 export function ChatHeader() {
   const { user } = useUserContext();
@@ -15,9 +14,9 @@ export function ChatHeader() {
     return null;
   }
 
-  const privateConversationMember = activeConversation.members.find(
-    (member) => member.id !== user?.id,
-  );
+  const privateConversationMember = activeConversation?.members.filter(
+    (member) => member.userId !== user?.id,
+  )[0];
 
   const title =
     activeConversation.type === 'GROUP'
@@ -72,10 +71,7 @@ export function ChatHeader() {
 
           {activeConversation.type === 'PRIVATE' && privateConversationMember?.lastSeenAt ? (
             <Text numberOfLines={1} ellipsizeMode='tail' fontSize='$2' color='$textSecondary'>
-              Última vez:{' '}
-              {format(new Date(privateConversationMember.lastSeenAt), "d 'de' MMMM yyyy HH:mm a", {
-                locale: es,
-              })}
+              Última vez: {formatLastSeen(privateConversationMember.lastSeenAt)}
             </Text>
           ) : null}
         </YStack>
