@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { AppState, BackHandler } from 'react-native';
 
 import { wsClient } from '@/src/clients/websocket-client';
 import { ChatContext } from '@/src/contexts/chat-context';
@@ -12,6 +12,7 @@ import { WS_CLIENT_EVENTS } from '@/src/types/websocket';
 
 import type { Conversation } from '@/src/types/conversation';
 import type { FileAttachment, LocalFile, UploadContentType } from '@/src/types/file';
+import type { ReactNode } from 'react';
 
 export function ChatProvider({ children }: { children: ReactNode }) {
   const { user } = useUserContext();
@@ -20,7 +21,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [activeConversationId, setActiveConversationId] = useState('');
   const [receiverId, setReceiverId] = useState('');
 
-  const { items, isLoading, hasMore, loadMore } = useCursorPagination<Conversation>({
+  const appState = useRef(AppState.currentState);
+
+  const { items, isLoading, hasMore, loadMore, refresh } = useCursorPagination<Conversation>({
     fetchPage: (cursor) =>
       conversationService.getBootstrap({
         cursor,
@@ -60,6 +63,31 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       return next;
     });
   }, [items]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (appState.current.match(/inactive|background/) && nextState === 'active') {
+        refresh();
+      }
+
+      appState.current = nextState;
+    });
+
+    return () => subscription.remove();
+  }, [refresh]);
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (activeConversationId) {
+        setActiveConversationId('');
+        return true;
+      }
+
+      return false;
+    });
+
+    return () => subscription.remove();
+  }, [activeConversationId]);
 
   /**
    * Add a new conversation to the list.
