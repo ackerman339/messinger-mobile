@@ -6,7 +6,7 @@ import { KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Input, Text, XStack, YStack } from 'tamagui';
 
-import Logo from '@/assets/messinger-logo.svg';
+import Logo from '@/assets/images/messinger-logo.svg';
 import { authService } from '@/src/services/auth';
 
 type AuthMode = 'sign-in' | 'sign-up';
