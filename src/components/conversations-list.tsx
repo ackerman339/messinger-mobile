@@ -203,8 +203,8 @@ function ConversationRow({ conversation, isActive, onSelect }: ConversationRowPr
 
   const title =
     conversation.type === 'GROUP'
-      ? (conversation.name ?? '')
-      : (privateConversationMember?.username ?? '');
+      ? conversation?.name
+      : privateConversationMember?.username || 'Usuario Eliminado';
 
   const avatarText = title ? title.slice(0, 2).toUpperCase() : '';
 

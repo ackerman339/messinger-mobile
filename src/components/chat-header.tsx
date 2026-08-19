@@ -20,8 +20,8 @@ export function ChatHeader() {
 
   const title =
     activeConversation.type === 'GROUP'
-      ? activeConversation.name
-      : (privateConversationMember?.username ?? '');
+      ? activeConversation?.name
+      : privateConversationMember?.username || 'Usuario Eliminado';
 
   return (
     <XStack
