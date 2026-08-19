@@ -1,4 +1,5 @@
 import { KeyboardAvoidingView, Platform } from 'react-native';
+import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PortalHost, PortalProvider, YStack } from 'tamagui';
 
@@ -13,6 +14,15 @@ import { UserProvider } from '@/src/providers/user-provider';
 
 function ChatContent() {
   const { activeConversation } = useChatContext();
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateX: withTiming(activeConversation ? 0 : 400, {
+          duration: 250,
+        }),
+      },
+    ],
+  }));
 
   return (
     <SafeAreaView style={{ flex: 1 }}>
@@ -20,14 +30,26 @@ function ChatContent() {
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        {!activeConversation ? (
-          <ConversationList />
-        ) : (
-          <YStack flex={1}>
-            <ChatHeader />
-            <MessageList />
-            <MessageComposer />
-          </YStack>
+        <ConversationList />
+        {activeConversation && (
+          <Animated.View
+            style={[
+              {
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+              },
+              animatedStyle,
+            ]}
+          >
+            <YStack flex={1} bg='$background'>
+              <ChatHeader />
+              <MessageList />
+              <MessageComposer />
+            </YStack>
+          </Animated.View>
         )}
       </KeyboardAvoidingView>
     </SafeAreaView>
