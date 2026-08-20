@@ -2,6 +2,9 @@ import { Mic, Square, Trash2 } from 'lucide-react-native';
 import { Pressable } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
+import { useChatContext } from '@/src/contexts/chat-context';
+import { COLORS } from '@/src/lib/constants';
+
 type VoiceRecorderProps = {
   isRecording: boolean;
   onStart: () => void;
@@ -10,6 +13,8 @@ type VoiceRecorderProps = {
 };
 
 export function VoiceRecorder({ isRecording, onStart, onStop, onCancel }: VoiceRecorderProps) {
+  const { isLoadingAttachment } = useChatContext();
+
   if (!isRecording) {
     return (
       <Pressable
@@ -20,10 +25,14 @@ export function VoiceRecorder({ isRecording, onStart, onStop, onCancel }: VoiceR
           justifyContent: 'center',
           borderRadius: 22,
         }}
+        disabled={isLoadingAttachment}
         onPress={onStart}
         accessibilityLabel='Grabar nota de voz'
       >
-        <Mic size={22} color='#64748b' />
+        <Mic
+          size={22}
+          color={isLoadingAttachment ? COLORS['text-secondary'] : COLORS['text-primary']}
+        />
       </Pressable>
     );
   }
@@ -41,7 +50,7 @@ export function VoiceRecorder({ isRecording, onStart, onStop, onCancel }: VoiceR
         onPress={onCancel}
         accessibilityLabel='Cancelar grabación'
       >
-        <Trash2 size={22} color='#64748b' />
+        <Trash2 size={22} color='red' />
       </Pressable>
 
       <XStack flex={1} height={44} items='center' justify='center' gap='$2'>

@@ -103,13 +103,12 @@ export function AttachmentMenu({ disabled = false, onFilesSelected }: Attachment
           items='center'
           justify='center'
           bg='transparent'
-          opacity={disabled ? 0.4 : 1}
           pressStyle={{
             bg: '$backgroundHover',
           }}
           accessibilityLabel='Enviar archivo'
         >
-          <Plus size={20} color={COLORS['text-secondary']} />
+          <Plus size={20} color={disabled ? COLORS['text-secondary'] : COLORS['text-primary']} />
         </Button>
       </Popover.Trigger>
 

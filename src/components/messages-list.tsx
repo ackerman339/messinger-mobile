@@ -10,6 +10,7 @@ import { FileAttachment } from '@/src/components/attachments/file-attachment';
 import { ImageAttachment } from '@/src/components/attachments/image-attachment';
 import { VideoAttachment } from '@/src/components/attachments/video-attachment';
 import { MessageSelectionBar } from '@/src/components/message-selection-bar';
+import { UploadingIndicator } from '@/src/components/uploading-indicator';
 import { useChatContext } from '@/src/contexts/chat-context';
 import { useUserContext } from '@/src/contexts/user-context';
 import { useCursorPagination } from '@/src/hooks/use-cursor-pagination';
@@ -22,7 +23,7 @@ const PAGE_SIZE = 20;
 const INITIAL_SCROLL_DELAY = 500;
 
 export function MessageList() {
-  const { activeConversation } = useChatContext();
+  const { activeConversation, isLoadingAttachment } = useChatContext();
 
   const conversationId = activeConversation?.id ?? null;
 
@@ -292,6 +293,15 @@ export function MessageList() {
 
   return (
     <YStack flex={1} position='relative'>
+      {selectedMessageIds.length > 0 && (
+        <MessageSelectionBar
+          count={selectedMessageIds.length}
+          isLoading={isDeletingMessagesLoading}
+          onDelete={deleteMessages}
+          onClose={clearSelection}
+        />
+      )}
+      {isLoadingAttachment && <UploadingIndicator />}
       <FlatList
         ref={listRef}
         data={messages}
@@ -320,15 +330,6 @@ export function MessageList() {
           flex: 1,
         }}
       />
-
-      {selectedMessageIds.length > 0 && (
-        <MessageSelectionBar
-          count={selectedMessageIds.length}
-          isLoading={isDeletingMessagesLoading}
-          onDelete={deleteMessages}
-          onClose={clearSelection}
-        />
-      )}
     </YStack>
   );
 }
