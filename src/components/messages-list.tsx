@@ -1,7 +1,7 @@
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, type ListRenderItem } from 'react-native';
+import { ActivityIndicator, FlatList, Linking, Pressable } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { wsClient } from '@/src/clients/websocket-client';
@@ -18,6 +18,7 @@ import { conversationService } from '@/src/services/conversation';
 import { WS_SERVER_EVENTS } from '@/src/types/websocket';
 
 import type { Message } from '@/src/types/conversation';
+import type { ListRenderItem } from 'react-native';
 
 const PAGE_SIZE = 20;
 const INITIAL_SCROLL_DELAY = 500;
@@ -378,12 +379,21 @@ function MessageBubble({ message, selected, onSelect }: MessageBubbleProps) {
           borderWidth={selected ? 2 : 0}
           borderColor={selected ? '$accent' : 'transparent'}
         >
-          {message.content ? (
+          {/^https?:\/\/\S+$/.test(message.content.trim()) ? (
+            <Text
+              fontSize='$3'
+              lineHeight={20}
+              color='$accent'
+              textDecorationLine='underline'
+              onPress={() => Linking.openURL(message.content.trim())}
+            >
+              {message.content}
+            </Text>
+          ) : (
             <Text fontSize='$3' lineHeight={20} color='$textPrimary'>
               {message.content}
             </Text>
-          ) : null}
-
+          )}
           {message.attachments?.length ? (
             <YStack gap='$2' my='$2'>
               {message.attachments.map((attachment) => (
@@ -391,7 +401,6 @@ function MessageBubble({ message, selected, onSelect }: MessageBubbleProps) {
               ))}
             </YStack>
           ) : null}
-
           <XStack justify='flex-end' items='center' gap='$1' mt='$1'>
             <Text fontSize='$1' color='$textSecondary'>
               {format(new Date(message.createdAt), 'dd MMM HH:mm', {
