@@ -1,3 +1,4 @@
+import { AxiosError } from 'axios';
 import * as Clipboard from 'expo-clipboard';
 import { router } from 'expo-router';
 import { Copy } from 'lucide-react-native';
@@ -43,7 +44,15 @@ export default function AuthPage() {
       const response = await authService.signUp({ username });
       setCreatedLoginKey(response.loginKey);
     } catch (error: unknown) {
-      console.error(error);
+      if (!(error instanceof AxiosError)) {
+        console.error(error);
+        return;
+      }
+
+      if (mode === 'sign-up' && error.status === 409) {
+        setError('Usuario ya existe');
+        return;
+      }
 
       setError(mode === 'sign-in' ? 'Clave de acceso inválida' : 'No se puede crear usuario');
     } finally {
