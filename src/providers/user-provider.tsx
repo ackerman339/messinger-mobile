@@ -5,6 +5,7 @@ import { AppState } from 'react-native';
 import { connect, disconnect } from '@/src/clients/websocket-client';
 import { UserContext } from '@/src/contexts/user-context';
 import { authService } from '@/src/services/auth';
+import { tokenStorage } from '@/src/token-storage';
 
 import type { ReactNode } from 'react';
 import type { AppStateStatus } from 'react-native';
@@ -123,13 +124,14 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const logout = async () => {
     loggedOutRef.current = true;
 
-    disconnect();
-
     try {
       await authService.logout();
     } finally {
-      userRef.current = null;
       setUser(null);
+      userRef.current = null;
+
+      disconnect();
+      await tokenStorage.clear();
 
       router.replace('/auth');
     }

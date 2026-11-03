@@ -1,8 +1,10 @@
+import { router } from 'expo-router';
+
 import { authService } from '@/src/services/auth';
 import { tokenStorage } from '@/src/token-storage';
 import { WS_CLIENT_EVENTS, WS_SERVER_EVENTS } from '@/src/types/websocket';
 
-import type { WsClientPayloads, WsErrorCode, WsServerPayloads } from '@/src/types/websocket';
+import type { WsClientPayloads, WsServerPayloads } from '@/src/types/websocket';
 
 type ServerEvent = keyof WsServerPayloads;
 type ClientEvent = keyof WsClientPayloads;
@@ -20,11 +22,12 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectAttempts = 0;
 
 const MAX_RECONNECT_DELAY = 30_000;
+const INITIAL_RECONNECT_DELAY = 300;
 
 /**
  * Authentication errors that require refreshing the session.
  */
-const AUTH_ERROR_CODES: Set<WsErrorCode> = new Set([
+const AUTH_ERROR_MESSAGES: Set<string> = new Set([
   'WS_AUTH:INVALID_ACCESS_TOKEN',
   'WS_AUTH:INVALID_SESSION',
   'WS_AUTH:SESSION_REVOKED',
@@ -32,7 +35,14 @@ const AUTH_ERROR_CODES: Set<WsErrorCode> = new Set([
 ]);
 
 function getReconnectDelay() {
-  return Math.min(1000 * 2 ** reconnectAttempts, MAX_RECONNECT_DELAY);
+  // Calculate the exponential backoff delay, capped at the maximum.
+  const exponentialDelay = Math.min(
+    INITIAL_RECONNECT_DELAY * 2 ** reconnectAttempts,
+    MAX_RECONNECT_DELAY,
+  );
+
+  // Apply full jitter to spread reconnection attempts over time.
+  return Math.floor(Math.random() * exponentialDelay);
 }
 
 async function handleOpen() {
@@ -71,23 +81,34 @@ async function handleMessage(event: MessageEvent) {
     // Auth failures arrive as a normal ERROR message, not a socket close —
     // the server keeps the connection open even when unauthenticated.
     if (type === WS_SERVER_EVENTS.ERROR) {
-      const errorData = data as WsServerPayloads[typeof WS_SERVER_EVENTS.ERROR];
-
       // Guard against the case where the server sends a plain string
       // instead of the expected { success, error } shape (unhandled errors)
-      const code = errorData?.error?.code;
+      const errorData = data as WsServerPayloads[typeof WS_SERVER_EVENTS.ERROR];
+      const message = errorData?.error?.message;
 
-      if (code && AUTH_ERROR_CODES.has(code)) {
+      if (message && AUTH_ERROR_MESSAGES.has(message)) {
         // SESSION_REVOKED means the session was explicitly invalidated
         // (e.g. logout elsewhere) — refresh will fail too, go straight to login
-        if (code === 'WS_AUTH:SESSION_REVOKED') {
+        if (message === 'WS_AUTH:SESSION_REVOKED') {
           disconnect();
-          window.location.href = '/login';
+          await authService.logout();
+          await tokenStorage.clear();
+          router.replace('/auth');
+
           return;
         }
 
-        if (!reconnecting) handleAuthError();
-        return;
+        handleAuthError();
+
+        // SEMD a refreshed access token
+        socket.send(
+          JSON.stringify({
+            type: WS_CLIENT_EVENTS.AUTH_TOKEN_SENT,
+            data: {
+              accessToken: await tokenStorage.getAccessToken(),
+            },
+          }),
+        );
       }
     }
 
@@ -102,11 +123,6 @@ async function handleAuthError() {
 
   try {
     /**
-     * Refresh the access token.
-     */
-    await authService.refresh();
-
-    /**
      * Close current socket intentionally.
      *
      * handleClose() will NOT reconnect because
@@ -115,13 +131,20 @@ async function handleAuthError() {
     disconnect();
 
     /**
+     * Refresh the access token.
+     */
+    await authService.refresh();
+
+    /**
      * connect() resets manualDisconnect.
      */
     connect(currentUrl);
   } catch (error) {
     console.error('[ws] session refresh failed', error);
-    disconnect();
-    window.location.href = '/login';
+
+    await authService.logout();
+    await tokenStorage.clear();
+    router.replace('/auth');
   } finally {
     reconnecting = false;
   }
