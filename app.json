@@ -7,9 +7,17 @@
     "icon": "./assets/images/icon.png",
     "scheme": "messingermobile",
     "userInterfaceStyle": "automatic",
+    "runtimeVersion": "1.0.0",
+    "updates": {
+      "enabled": true,
+      "url": "https://u.expo.dev/c96e488c-1f41-481e-be73-c97239e168b6",
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.messinger.mobile"
+      "bundleIdentifier": "com.messinger.mobile",
+      "bitcode": false
     },
     "android": {
       "googleServicesFile": "./google-services.json",

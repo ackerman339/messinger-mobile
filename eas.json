@@ -7,18 +7,22 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "pnpm": "8.15.9"
+      "pnpm": "8.15.9",
+      "channel": "development"
     },
     "preview": {
       "distribution": "internal",
+      "channel": "preview",
+      "environment": "preview",
+      "pnpm": "8.15.9",
       "android": {
         "buildType": "apk"
-      },
-      "pnpm": "8.15.9"
+      }
     },
     "production": {
       "autoIncrement": true,
-      "pnpm": "8.15.9"
+      "pnpm": "8.15.9",
+      "channel": "production"
     }
   },
   "submit": {
