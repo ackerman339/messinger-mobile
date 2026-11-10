@@ -1,7 +1,8 @@
 import { AudioModule, RecordingPresets, setAudioModeAsync, useAudioRecorder } from 'expo-audio';
 import { randomUUID } from 'expo-crypto';
 import { File } from 'expo-file-system';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { registerChatRecorder } from '../services/call-audio-ownership';
 
 export type VoiceRecording = {
   uri: string;
@@ -14,6 +15,9 @@ export function useVoiceRecorder() {
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
   const [isRecording, setIsRecording] = useState(false);
+  const recordingRef = useRef(false);
+  const unregister = useRef<(() => void) | undefined>(undefined);
+  useEffect(() => () => unregister.current?.(), []);
   const [recording, setRecording] = useState<VoiceRecording | null>(null);
 
   async function startRecording() {
@@ -30,13 +34,15 @@ export function useVoiceRecorder() {
 
     await recorder.prepareToRecordAsync();
     recorder.record();
+    recordingRef.current = true;
+    unregister.current = registerChatRecorder(cancelRecording);
 
     setRecording(null);
     setIsRecording(true);
   }
 
   async function stopRecording() {
-    if (!isRecording) {
+    if (!recordingRef.current) {
       return null;
     }
 
@@ -44,6 +50,8 @@ export function useVoiceRecorder() {
 
     const uri = recorder.uri;
 
+    recordingRef.current = false;
+    unregister.current?.(); unregister.current = undefined;
     setIsRecording(false);
 
     await setAudioModeAsync({
@@ -70,17 +78,15 @@ export function useVoiceRecorder() {
   }
 
   async function cancelRecording() {
-    if (isRecording) {
-      await recorder.stop();
+    try {
+      if (recordingRef.current) await recorder.stop();
+    } finally {
+      recordingRef.current = false;
+      unregister.current?.(); unregister.current = undefined;
+      setIsRecording(false);
+      setRecording(null);
+      await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false });
     }
-
-    setIsRecording(false);
-    setRecording(null);
-
-    await setAudioModeAsync({
-      playsInSilentMode: true,
-      allowsRecording: false,
-    });
   }
 
   function deleteRecording() {

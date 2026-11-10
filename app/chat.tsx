@@ -3,6 +3,8 @@ import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated'
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PortalHost, PortalProvider, YStack } from 'tamagui';
 
+import { CallProvider } from '@/src/providers/call-provider';
+import { CallPanel } from '@/src/calls/componentes/call-panel';
 import { ChatHeader } from '@/src/components/chat-header';
 import { ConversationList } from '@/src/components/conversations-list';
 import { MessageComposer } from '@/src/components/message-composer';
@@ -60,12 +62,15 @@ export default function ChatPage() {
   return (
     <UserProvider>
       <ChatProvider>
+        <CallProvider>
         <AttachmentProvider>
           <PortalProvider>
             <ChatContent />
+            <CallPanel />
             <PortalHost name='chat' />
           </PortalProvider>
         </AttachmentProvider>
+        </CallProvider>
       </ChatProvider>
     </UserProvider>
   );

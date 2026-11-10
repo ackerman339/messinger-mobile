@@ -1,6 +1,9 @@
+import { CALL_CLIENT_EVENTS, CALL_SERVER_EVENTS } from './call';
+import type { CallClientPayloads, CallServerPayloads } from './call';
 import type { Message } from './conversation';
 
 export const WS_CLIENT_EVENTS = {
+  ...CALL_CLIENT_EVENTS,
   AUTH_TOKEN_SENT: 'AUTH_TOKEN_SENT',
   SEND_PRIVATE_MESSAGE: 'SEND_PRIVATE_MESSAGE',
   SEND_GROUP_MESSAGE: 'SEND_GROUP_MESSAGE',
@@ -14,6 +17,7 @@ export const WS_CLIENT_EVENTS = {
 } as const;
 
 export const WS_SERVER_EVENTS = {
+  ...CALL_SERVER_EVENTS,
   REQUEST_AUTH_TOKEN: 'REQUEST_AUTH_TOKEN',
   MESSAGE_SENT: 'MESSAGE_SENT',
   NEW_MESSAGE: 'NEW_MESSAGE',
@@ -94,7 +98,7 @@ export interface GroupInvitationDto {
 }
 
 // --- Payloads del CLIENTE -> server ---
-export interface WsClientPayloads {
+export interface WsClientPayloads extends CallClientPayloads {
   [WS_CLIENT_EVENTS.SEND_PRIVATE_MESSAGE]: PrivateMessageDto;
   [WS_CLIENT_EVENTS.SEND_GROUP_MESSAGE]: GroupMessageDto;
   [WS_CLIENT_EVENTS.MESSAGE_DELIVERED]: MessageDeliveryDto;
@@ -108,7 +112,7 @@ export interface WsClientPayloads {
 }
 
 // --- Data real que manda el SERVIDOR ---
-export interface WsServerPayloads {
+export interface WsServerPayloads extends CallServerPayloads {
   [WS_SERVER_EVENTS.NEW_MESSAGE]: Message;
   [WS_SERVER_EVENTS.MESSAGE_SENT]: Message;
   [WS_SERVER_EVENTS.MESSAGE_STATUS_UPDATED]: {

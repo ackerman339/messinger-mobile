@@ -1,5 +1,7 @@
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import * as Device from 'expo-device';
+import { nativeCallService } from '@/src/services/native-call-service';
+import { parseCallPush } from '@/src/services/call-push';
 import { Platform } from 'react-native';
 
 export async function getPushToken(requestPermission = false) {
@@ -14,12 +16,11 @@ export async function getPushToken(requestPermission = false) {
   const Notifications = await import('expo-notifications');
 
   Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowBanner: true,
-      shouldShowList: true,
-      shouldPlaySound: true,
-      shouldSetBadge: false,
-    }),
+    handleNotification: async notification => {
+      const incoming = parseCallPush(notification)?.type === 'call-incoming' && nativeCallService.getSnapshot().ready;
+      return { shouldShowBanner: !incoming, shouldShowList: !incoming,
+        shouldPlaySound: !incoming, shouldSetBadge: false };
+    },
   });
 
   if (Platform.OS === 'android') {

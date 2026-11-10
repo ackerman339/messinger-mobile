@@ -1,6 +1,7 @@
 import { ArrowLeft, MoreVertical } from 'lucide-react-native';
 import { Avatar, Button, Text, XStack, YStack } from 'tamagui';
 
+import { CallButtons } from '@/src/calls/componentes/call-buttons';
 import { useChatContext } from '@/src/contexts/chat-context';
 import { useUserContext } from '@/src/contexts/user-context';
 import { COLORS } from '@/src/lib/constants';
@@ -77,6 +78,7 @@ export function ChatHeader() {
         </YStack>
       </XStack>
 
+      {activeConversation.type === 'PRIVATE' && privateConversationMember?.userId && <CallButtons participantId={privateConversationMember.userId} />}
       <Button
         circular
         size='$4'

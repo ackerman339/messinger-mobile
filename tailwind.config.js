@@ -6,6 +6,7 @@ module.exports = {
     extend: {
       colors: {
         accent: '#54a9eb',
+        danger: '#ef505d',
         'accent-hover': '#4a99d6',
         'bg-app': '#ffffff',
         'bg-sidebar': '#ffffff',

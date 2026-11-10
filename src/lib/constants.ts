@@ -4,6 +4,7 @@ export const URL_TTL = 47 * 60 * 60 * 1000;
 
 export const COLORS = {
   accent: '#54a9eb',
+  danger: '#ef505d',
   'accent-hover': '#4a99d6',
   'bg-app': '#ffffff',
   'bg-sidebar': '#ffffff',

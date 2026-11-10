@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 
 import { connect, disconnect } from '@/src/clients/websocket-client';
+import { hasActiveCall, stopCallRuntime } from '@/src/services/call-runtime';
 import { UserContext } from '@/src/contexts/user-context';
 import { usePushNotifications } from '@/src/hooks/use-push-notifications';
 import { authService } from '@/src/services/auth';
@@ -73,7 +74,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const handleAppStateChange = (nextState: AppStateStatus) => {
       if (nextState === 'background' || nextState === 'inactive') {
-        disconnect();
+        if (!hasActiveCall()) disconnect();
         return;
       }
 
@@ -125,6 +126,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     loggedOutRef.current = true;
+    stopCallRuntime();
 
     try {
       await unregisterPushNotifications();

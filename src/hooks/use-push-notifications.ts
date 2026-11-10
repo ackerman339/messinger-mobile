@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { AppState, Platform } from 'react-native';
 
+import { registerCallNotificationTask } from '@/src/tasks/call-notifications';
 import { getPushToken } from '@/src/lib/notifications';
 import { pushSubscriptionService } from '@/src/services/push-subscription';
 
@@ -47,6 +48,7 @@ export function usePushNotifications(user: User | null) {
         // Keep the token even if the response is lost, so logout can remove it.
         tokenRef.current = token;
         await pushSubscriptionService.subscribeMobile({ token, platform });
+        await registerCallNotificationTask();
       })()
         .catch(() => {
           console.warn('[push] Failed to register notifications; will retry when the app resumes');
