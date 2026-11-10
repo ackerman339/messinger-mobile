@@ -4,6 +4,7 @@ import { AppState } from 'react-native';
 
 import { connect, disconnect } from '@/src/clients/websocket-client';
 import { UserContext } from '@/src/contexts/user-context';
+import { usePushNotifications } from '@/src/hooks/use-push-notifications';
 import { authService } from '@/src/services/auth';
 import { tokenStorage } from '@/src/token-storage';
 
@@ -16,6 +17,7 @@ const WEB_SOCKET_URL = process.env.EXPO_PUBLIC_WEB_SOCKET_URL!;
 export function UserProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const { unregisterPushNotifications } = usePushNotifications(user);
 
   /**
    * Keep the current user available to the AppState listener
@@ -125,6 +127,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     loggedOutRef.current = true;
 
     try {
+      await unregisterPushNotifications();
       await authService.logout();
     } finally {
       setUser(null);

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1089126475829",
+    "project_id": "messinger-mobile",
+    "storage_bucket": "messinger-mobile.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1089126475829:android:cac3cc24acb7dc7f53297c",
+        "android_client_info": {
+          "package_name": "com.messinger.mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBdWKA4Td6U3Id_I5AxVrfDPuJwextLCyA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

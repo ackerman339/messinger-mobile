@@ -48,3 +48,38 @@ Join our community of developers creating universal apps.
 
 - [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
 - [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+
+## Notificaciones push móviles
+
+La app obtiene el token de Expo después de restaurar la sesión y lo registra con
+`POST /push/subscribe-mobile` (`token` y `platform`: `ANDROID` o `IOS`). Al volver
+a primer plano sincroniza el registro y reintenta los fallos de red sin volver a
+pedir permisos. Antes del logout llama a `DELETE /push/unsubscribe-mobile` con
+`{ token }`. El envío lo realiza el backend.
+
+El canal Android es `messages`, igual al que usa el backend. El registro se omite
+en web, simuladores y Expo Go. Al rechazar permisos, la app sigue funcionando.
+
+### Configuración necesaria para recibir notificaciones
+
+1. En Firebase, registrar una app Android con el paquete `com.messinger.mobile`.
+2. Descargar su `google-services.json` y agregar la ruta en `expo.android.googleServicesFile`
+   de `app.json`, por ejemplo `"googleServicesFile": "./google-services.json"`.
+3. Configurar las credenciales FCM v1 del proyecto en EAS. El archivo de cuenta de
+   servicio de Firebase se carga en EAS; no se incluye en el código de la app.
+4. Para iOS, configurar las credenciales APNs del identificador `com.messinger.mobile`
+   en EAS.
+5. Generar un nuevo build nativo. Para probar Android puede utilizarse el perfil
+   `preview` existente: `npx eas-cli build --platform android --profile preview`.
+   Para una compilación local, sincronizar primero los archivos generados con
+   `pnpm exec expo prebuild --platform android --no-install` y ejecutar `pnpm android`.
+
+Usar un dispositivo físico con permisos habilitados. Para verificar el flujo,
+autenticar, enviar la app a segundo plano y generar un mensaje desde otra cuenta.
+Las reglas del backend envían push solo cuando el destinatario no tiene conexiones
+WebSocket; cerrar también sus otras sesiones web para esta prueba.
+
+La integración registra y elimina el token y permite presentar notificaciones;
+no incluye navegación a una conversación específica al tocar una notificación.
+
+Referencia: [Configuración de Expo Push](https://docs.expo.dev/push-notifications/push-notifications-setup/).
