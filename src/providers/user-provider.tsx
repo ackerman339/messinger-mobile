@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 
 import { connect, disconnect } from '@/src/clients/websocket-client';
+import { clearNotificationSession, setNotificationUser } from '@/src/services/notification-state';
 import { hasActiveCall, stopCallRuntime } from '@/src/services/call-runtime';
 import { UserContext } from '@/src/contexts/user-context';
 import { usePushNotifications } from '@/src/hooks/use-push-notifications';
@@ -107,6 +108,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       try {
         const currentUser = await authService.me();
 
+        setNotificationUser(currentUser.id);
         userRef.current = currentUser;
         setUser(currentUser);
 
@@ -114,6 +116,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
         connectWebSocket();
       } catch {
+        clearNotificationSession();
         userRef.current = null;
         setUser(null);
       } finally {
@@ -126,6 +129,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     loggedOutRef.current = true;
+    clearNotificationSession();
     stopCallRuntime();
 
     try {

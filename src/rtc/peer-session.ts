@@ -1,5 +1,7 @@
 import type { MediaStream, RTCPeerConnection } from 'react-native-webrtc';
 import { getWebRTC } from './native-webrtc';
+import { getVideoStreamKey } from './video-stream';
+import { stopCallSoundBeforeMedia } from '../services/call-sound-service';
 import { getIceServers } from '../services/ice-api';
 import { requestCallPermissions } from '../services/call-permissions';
 import type { CallIceCandidate, CallMedia } from '../types/call';
@@ -7,7 +9,7 @@ import type { CallIceCandidate, CallMedia } from '../types/call';
 interface PeerCallbacks {
   isActive: () => boolean;
   onCandidate: (candidate: CallIceCandidate | null) => void;
-  onStreams: (local: MediaStream, remote: MediaStream) => void;
+  onStreams: (local: MediaStream, remote?: MediaStream) => void;
   onConnectionState: (state: string) => void;
   onDeviceEnded: (kind: string) => void;
 }
@@ -29,6 +31,8 @@ export function createPeerSession() {
   let peer: RTCPeerConnection | undefined;
   let local: MediaStream | undefined;
   let remote: MediaStream | undefined;
+  let streamless: MediaStream | undefined;
+  let streamlessRevision = 0;
   let preparing: Promise<RTCPeerConnection> | undefined;
   let generation = 0;
   let frontCamera = true;
@@ -46,6 +50,8 @@ export function createPeerSession() {
 
   async function open(media: CallMedia, callbacks: PeerCallbacks, active: () => boolean) {
     const rtc = getWebRTC();
+    await stopCallSoundBeforeMedia();
+    if (!active()) throw new Error('Sesión finalizada');
     await requestCallPermissions(media);
     const iceServers = await getIceServers();
     if (!active()) throw new Error('Sesión finalizada');
@@ -62,16 +68,36 @@ export function createPeerSession() {
     try {
       const connection = new rtc.RTCPeerConnection({ iceServers });
       peer = connection;
-      const received = new rtc.MediaStream();
-      remote = received;
       connection.addEventListener('icecandidate', (event) => {
         if (active()) callbacks.onCandidate(event.candidate?.toJSON() ?? null);
       });
       connection.addEventListener('track', (event) => {
         if (!active() || !event.track) return;
         const track = event.track;
+        const nativeStreams = event.streams ?? [];
+        const native =
+          nativeStreams.find((stream) => getVideoStreamKey(stream)) ?? nativeStreams[0];
+        if (native) {
+          // Native event streams already contain their tracks. Avoid rebuilding them through the bridge.
+          if (getVideoStreamKey(native) || !getVideoStreamKey(remote)) remote = native;
+          callbacks.onStreams(captured, remote);
+          return;
+        }
+        // Valid streamless tracks need a synthetic stream; never publish it while native addTrack is pending.
+        const received = (streamless ??= new rtc.MediaStream());
         if (!received.getTracks().some((item) => item.id === track.id)) received.addTrack(track);
-        callbacks.onStreams(captured, received);
+        const revision = ++streamlessRevision;
+        // This native promise runs after stream creation/addTrack on the WebRTC executor.
+        void connection
+          .getStats()
+          .then(() => {
+            if (!active() || revision !== streamlessRevision) return;
+            if (!getVideoStreamKey(remote) || remote === received) remote = received;
+            callbacks.onStreams(captured, remote);
+          })
+          .catch(() => {
+            if (active()) console.warn('[calls] remote-stream-binding-failed');
+          });
       });
       connection.addEventListener('connectionstatechange', () => {
         if (active()) callbacks.onConnectionState(connection.connectionState);
@@ -82,7 +108,8 @@ export function createPeerSession() {
           if (active()) callbacks.onDeviceEnded(track.kind);
         };
       });
-      callbacks.onStreams(captured, received);
+      // Publish local capture only; an empty remote stream would mount RTCView too early.
+      callbacks.onStreams(captured);
       return connection;
     } catch (error) {
       close();
@@ -122,7 +149,10 @@ export function createPeerSession() {
     peer?.close();
     peer = undefined;
     release(local);
-    release(remote);
+    // PeerConnection owns native remote streams. Only release the synthetic fallback ourselves.
+    release(streamless);
+    streamless = undefined;
+    streamlessRevision++;
     local = undefined;
     remote = undefined;
     preparing = undefined;

@@ -4,8 +4,11 @@ import { wsClient } from '../clients/websocket-client';
 import { hasNativeCalling } from '../rtc/native-webrtc';
 import { tokenStorage } from '../token-storage';
 import { isTerminal } from '../types/call';
+import { dismissIncomingCallNotification } from './call-notification-service';
 import { isExpiredCallPush } from './call-push';
+import { silenceCallSound, syncCallSound } from './call-sound-service';
 import { nativeCallService } from './native-call-service';
+import { setCallInProgress } from './notification-state';
 
 import type { CallPush } from './call-push';
 
@@ -34,9 +37,12 @@ async function ensureCallConnection() {
 }
 
 export async function respondToCall(callId: string, action: 'accept' | 'reject') {
+  const version = authVersion;
   callId = callId.toLowerCase();
   if (action === 'accept' && responseIntents.get(callId) === 'reject') return;
   responseIntents.set(callId, action);
+  silenceCallSound(callId);
+  dismissIncomingCallNotification(callId);
   if (responseIntents.size > 128) responseIntents.delete(responseIntents.keys().next().value!);
   try {
     await ensureCallConnection();
@@ -46,7 +52,7 @@ export async function respondToCall(callId: string, action: 'accept' | 'reject')
       callClient.answerFromNotification(callId.toLowerCase());
     } else callClient.rejectFromNotification(callId.toLowerCase());
   } catch {
-    nativeCallService.clear();
+    if (version === authVersion) nativeCallService.clear();
   }
 }
 
@@ -64,6 +70,12 @@ function onNativeEnd(callId: string) {
 export function bindNativeCallEvents() {
   if (stopNativeEvents || !hasNativeCalling()) return;
   const subscriptions = [
+    nativeCallService.on('showIncomingCallUi', ({ callUUID }) => {
+      nativeCallService.showIncomingUi(callUUID.toLowerCase());
+    }),
+    nativeCallService.on('silenceIncomingCall', ({ callUUID }) =>
+      silenceCallSound(callUUID.toLowerCase()),
+    ),
     nativeCallService.on('answerCall', ({ callUUID }) => {
       nativeCallService.adopt(callUUID.toLowerCase(), true);
       void respondToCall(callUUID, 'accept');
@@ -105,6 +117,8 @@ export function bindNativeCallEvents() {
     ?.then((events) => {
       if (version !== authVersion) return;
       for (const event of events) {
+        if (event.name === 'RNCallKeepShowIncomingCallUi')
+          nativeCallService.showIncomingUi(event.data.callUUID.toLowerCase());
         if (event.name === 'RNCallKeepPerformAnswerCallAction') {
           nativeCallService.adopt(event.data.callUUID.toLowerCase(), true);
           void respondToCall(event.data.callUUID, 'accept');
@@ -123,6 +137,8 @@ export function startCallRuntime() {
   const detachEvents = callClient.mount();
   const unsubscribe = callClient.subscribe(() => {
     const call = callClient.getSnapshot();
+    syncCallSound(call);
+    setCallInProgress(hasActiveCall());
     nativeCallService.sync(call);
     if (!hasActiveCall() && AppState.currentState !== 'active') wsClient.disconnect();
   });
@@ -142,6 +158,8 @@ export function setCallUser(userId?: string) {
 export function stopCallRuntime() {
   authVersion++;
   activeUser = undefined;
+  syncCallSound(null);
+  setCallInProgress(false);
   suppressNativeEnd = true;
   try {
     callClient.end();
@@ -159,11 +177,16 @@ export const getCallUser = () => activeUser;
 
 export async function receiveCallPush(push: CallPush) {
   const version = authVersion;
-  if (!hasNativeCalling() || isExpiredCallPush(push)) return;
+  if (!hasNativeCalling()) return;
+  if (isExpiredCallPush(push)) {
+    dismissIncomingCallNotification(push.callId);
+    return;
+  }
   if (!(await tokenStorage.getAccessToken()) || version !== authVersion) return;
   await ensureCallConnection();
   if (version !== authVersion) return;
   if (push.type === 'call-missed') {
+    dismissIncomingCallNotification(push.callId);
     if (callClient.getSnapshot()?.callId === push.callId && hasActiveCall())
       callClient.inspectFromNotification(push.callId);
     return;
@@ -177,5 +200,11 @@ export async function receiveCallPush(push: CallPush) {
   if (!ready || call?.callId !== push.callId || !call.incoming) return;
   if (call.status === 'ringing') nativeCallService.sync(call);
   else if (call.status === 'requesting')
-    nativeCallService.displayIncoming(push.callId, push.callerId, push.media);
+    nativeCallService.displayIncoming(
+      push.callId,
+      push.callerId,
+      push.media,
+      'Contacto',
+      push.expiresAt,
+    );
 }

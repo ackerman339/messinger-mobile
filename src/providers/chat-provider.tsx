@@ -4,6 +4,7 @@ import { AppState, BackHandler } from 'react-native';
 import { wsClient } from '@/src/clients/websocket-client';
 import { ChatContext } from '@/src/contexts/chat-context';
 import { useUserContext } from '@/src/contexts/user-context';
+import { useMessageNotifications } from '@/src/hooks/use-message-notifications';
 import { useCursorPagination } from '@/src/hooks/use-cursor-pagination';
 import { conversationService } from '@/src/services/conversation';
 import { fileService } from '@/src/services/files';
@@ -194,6 +195,14 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       receiverId: targetReceiverId,
     });
   }
+
+  useMessageNotifications({
+    userId: user?.id,
+    conversations,
+    activeConversationId,
+    openConversation: handleCurrentConversation,
+    addConversation: handleNewConversation,
+  });
 
   return (
     <ChatContext.Provider

@@ -3,16 +3,43 @@ package expo.modules.callaudio
 import android.content.Context
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
+import android.os.Build
 import android.os.PowerManager
+import expo.modules.kotlin.functions.Queues
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 
-/** Proximity only: Telecom remains the sole owner of communication audio routing. */
+/** Telecom remains the sole owner of communication audio routing. */
 class CallAudioModule : Module() {
   private var proximityLock: PowerManager.WakeLock? = null
 
   override fun definition() = ModuleDefinition {
     Name("MessingerCallAudio")
+
+    OnCreate {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        appContext.reactContext?.let { CallTonePlayer.initialize(it.applicationContext) }
+      }
+    }
+
+    Function("startCallTone") { key: String, callId: String, sound: String, expiresAt: Double ->
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return@Function
+      appContext.reactContext?.let {
+        CallTonePlayer.start(it.applicationContext, key, callId, sound, expiresAt.toLong())
+      }
+    }
+
+    Function("stopCallTone") { key: String ->
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return@Function
+      CallTonePlayer.stop(key)
+    }
+
+    AsyncFunction("stopCallToneBeforeMedia") {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        CallTonePlayer.stopBeforeMedia()
+      }
+      Unit
+    }.runOnQueue(Queues.MAIN)
 
     Function("getBuiltinOutputs") {
       val context = appContext.reactContext ?: return@Function mapOf("earpiece" to false, "speaker" to false)

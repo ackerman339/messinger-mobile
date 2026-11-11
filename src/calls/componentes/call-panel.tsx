@@ -5,17 +5,19 @@ import { useCallPanel } from '../../hooks/use-call-panel';
 import { COLORS } from '../../lib/constants';
 import { CallControls } from './call-controls';
 import { CallStream } from './call-stream';
+import { getVideoStreamKey } from '../../rtc/video-stream';
 
 export function CallPanel() {
   const model = useCallPanel();
   const { call, terminal } = model;
   const insets = useSafeAreaInsets();
   if (!call) return null;
-  const video = call.media === 'video' && !!call.remote && !terminal;
+  const video = call.media === 'video' && !!getVideoStreamKey(call.remote) && !terminal;
   return (
     <Modal
       visible
       animationType='slide'
+      hardwareAccelerated
       statusBarTranslucent
       onRequestClose={() => {
         if (terminal) model.handleDismissCall();

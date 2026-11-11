@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, AppState } from 'react-native';
 import { CallContext } from '../contexts/call-context';
 import { useUserContext } from '../contexts/user-context';
-import { useCallSound } from '../hooks/use-call-sound';
 import { hasNativeCalling } from '../rtc/native-webrtc';
 import { releaseChatRecorderForCall } from '../services/call-audio-ownership';
 import { requestCallPermissions } from '../services/call-permissions';
@@ -15,6 +14,7 @@ import {
 } from '../services/call-runtime';
 import { nativeCallService } from '../services/native-call-service';
 import { subscribeCallNotifications } from '../tasks/call-notifications';
+
 import type { ReactNode } from 'react';
 import type { CallMedia } from '../types/call';
 
@@ -41,7 +41,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
     setCallUser(hasNativeCalling() ? userId : undefined);
     if (!userId || !hasNativeCalling()) return;
     void nativeCallService
-      .ensureReady(true)
+      .ensureReady()
       .then(() => nativeCallService.sync(callClient.getSnapshot()));
     const notifications = subscribeCallNotifications();
     const subscription = AppState.addEventListener('change', (state) => {
@@ -55,8 +55,6 @@ export function CallProvider({ children }: { children: ReactNode }) {
       subscription.remove();
     };
   }, [userId]);
-
-  useCallSound(call, !!call?.callId && native.ready && nativeCallService.hasCall(call.callId));
 
   async function handleStartCall(participantId: string, media: CallMedia) {
     if (startInFlight.current || hasActiveCall() || !userId) return;
@@ -72,8 +70,10 @@ export function CallProvider({ children }: { children: ReactNode }) {
     try {
       await releaseChatRecorderForCall();
       await requestCallPermissions(media);
-      if (!(await nativeCallService.ensureReady(true)))
-        throw new Error('Habilita las llamadas de Messinger en los ajustes del teléfono.');
+      if (!(await nativeCallService.ensureReady()))
+        throw new Error(
+          nativeCallService.getSnapshot().error ?? 'No se pudo iniciar la integración de llamadas.',
+        );
       if (getCallUser() !== userId) return;
       callClient.start(participantId, media);
     } catch (error) {
@@ -90,8 +90,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
   function handleAcceptCall() {
     const snapshot = callClient.getSnapshot();
     if (!snapshot?.callId) return;
-    if (nativeCallService.hasCall(snapshot.callId)) nativeCallService.answer(snapshot.callId);
-    else void respondToCall(snapshot.callId, 'accept');
+    void respondToCall(snapshot.callId, 'accept');
   }
   function handleRejectCall() {
     const snapshot = callClient.getSnapshot();

@@ -35,9 +35,18 @@ export async function requestCallPermissions(media: CallMedia) {
   for (const permission of permissions) {
     if (!(await PermissionsAndroid.check(permission))) missing.push(permission);
   }
-  if (!missing.length) return;
+  // Bluetooth is optional and must not block a background voice call whose mic is permitted.
+  const bluetooth = PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT;
+  const optional: Permission[] = [];
+  if (
+    Number(Platform.Version) >= 31 &&
+    AppState.currentState === 'active' &&
+    !(await PermissionsAndroid.check(bluetooth))
+  )
+    optional.push(bluetooth);
+  if (!missing.length && !optional.length) return;
   await waitForForeground();
-  const results = await PermissionsAndroid.requestMultiple(missing);
+  const results = await PermissionsAndroid.requestMultiple([...missing, ...optional]);
   if (missing.some((permission) => results[permission] !== PermissionsAndroid.RESULTS.GRANTED)) {
     throw new Error(
       'Permite el acceso al micrófono y, para video, a la cámara en los ajustes de la aplicación.',

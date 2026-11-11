@@ -57,7 +57,8 @@ async function handleOpen() {
 }
 
 async function handleMessage(event: MessageEvent) {
-  const socket = event.currentTarget as WebSocket;
+  const source = event.currentTarget as WebSocket;
+  if (source !== socket) return;
 
   try {
     const { type, data } = JSON.parse(event.data) as {
@@ -66,11 +67,13 @@ async function handleMessage(event: MessageEvent) {
     };
 
     if (type === WS_SERVER_EVENTS.REQUEST_AUTH_TOKEN) {
-      socket.send(
+      const accessToken = await tokenStorage.getAccessToken();
+      if (source !== socket || source.readyState !== WebSocket.OPEN) return;
+      source.send(
         JSON.stringify({
           type: WS_CLIENT_EVENTS.AUTH_TOKEN_SENT,
           data: {
-            accessToken: await tokenStorage.getAccessToken(),
+            accessToken,
           },
         }),
       );
@@ -98,17 +101,9 @@ async function handleMessage(event: MessageEvent) {
           return;
         }
 
-        handleAuthError();
-
-        // SEMD a refreshed access token
-        socket.send(
-          JSON.stringify({
-            type: WS_CLIENT_EVENTS.AUTH_TOKEN_SENT,
-            data: {
-              accessToken: await tokenStorage.getAccessToken(),
-            },
-          }),
-        );
+        await handleAuthError();
+        // The replacement socket authenticates through its own REQUEST_AUTH_TOKEN event.
+        return;
       }
     }
 
@@ -188,6 +183,8 @@ function scheduleReconnect() {
 }
 
 function handleClose(event: CloseEvent) {
+  // The OS can deliver an old close after a foreground connection has already replaced it.
+  if (event.currentTarget !== socket) return;
   console.log('[ws] CLOSE', {
     code: event.code,
     reason: event.reason,

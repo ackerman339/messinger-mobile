@@ -1,10 +1,15 @@
-import { AppState, NativeModules, PermissionsAndroid, Platform } from 'react-native';
+import { NativeModules, Platform } from 'react-native';
 import { requireOptionalNativeModule } from 'expo';
 import type RNCallKeep from 'react-native-callkeep';
 import type { AudioRoute, Events, EventsPayload } from 'react-native-callkeep';
 import type { CallView } from '../state/call-session';
 import { isTerminal } from '../types/call';
 import { hasNativeCalling } from '../rtc/native-webrtc';
+import {
+  dismissAllIncomingCallNotifications,
+  dismissIncomingCallNotification,
+  showIncomingCallNotification,
+} from './call-notification-service';
 
 interface CallAudioModule {
   getBuiltinOutputs(): { earpiece: boolean; speaker: boolean };
@@ -24,17 +29,11 @@ const options = {
   ios: { appName: 'Messinger' },
   android: {
     alertTitle: 'Llamadas de Messinger',
-    alertDescription:
-      'Habilita Messinger como cuenta de llamadas para recibir y atender llamadas desde el sistema.',
-    cancelButton: 'Ahora no',
-    okButton: 'Abrir ajustes',
-    additionalPermissions: [
-      PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
-      ...(Platform.OS === 'android' && Number(Platform.Version) >= 31
-        ? [PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT]
-        : []),
-    ],
-    selfManaged: false,
+    alertDescription: 'Permite el micrófono para comunicarte con tus contactos.',
+    cancelButton: 'Cancelar',
+    okButton: 'Continuar',
+    additionalPermissions: [],
+    selfManaged: true,
     foregroundService: {
       channelId: 'messinger-ongoing-calls',
       channelName: 'Llamadas en curso',
@@ -55,7 +54,18 @@ function getCallKeep(): typeof RNCallKeep | undefined {
 const proximity = () => requireOptionalNativeModule<CallAudioModule>('MessingerCallAudio');
 const shown = new Map<
   string,
-  { incoming: boolean; active: boolean; muted: boolean; routed?: boolean }
+  {
+    incoming: boolean;
+    active: boolean;
+    muted: boolean;
+    routed?: boolean;
+    answered?: boolean;
+    uiRequested?: boolean;
+    participantId?: string;
+    media?: 'audio' | 'video';
+    name?: string;
+    expiresAt?: string;
+  }
 >();
 const listeners = new Set<() => void>();
 let current: CallView | null = null;
@@ -74,21 +84,20 @@ const publish = (patch: Partial<NativeCallSnapshot>) => {
   listeners.forEach((listener) => listener());
 };
 
-async function ensureReady(interactive = false) {
+async function ensureReady() {
   if (!hasNativeCalling()) return false;
   if (snapshot.ready) return true;
   if (setup) return setup;
   const version = setupVersion;
   setup = (async () => {
     const keep = getCallKeep()!;
-    // Background delivery must not open a permissions dialog.
-    if (
-      (!interactive || AppState.currentState !== 'active') &&
-      !(await keep.checkPhoneAccountEnabled())
-    )
+    // Self-managed accounts are registered by Telecom without the managed-account settings dialog.
+    if (Number(Platform.Version) < 26) {
+      publish({ error: 'Las llamadas requieren Android 8 o posterior.' });
       return false;
+    }
     await keep.setup(options);
-    const ready = await keep.checkPhoneAccountEnabled();
+    const ready = await keep.isConnectionServiceAvailable();
     if (version !== setupVersion) return false;
     keep.setAvailable(ready);
     keep.canMakeMultipleCalls(false);
@@ -96,7 +105,7 @@ async function ensureReady(interactive = false) {
       ready,
       error: ready
         ? undefined
-        : 'Habilita la cuenta de llamadas de Messinger en los ajustes del teléfono.',
+        : 'Este dispositivo no ofrece la integración de llamadas de Android.',
     });
     return ready;
   })()
@@ -194,10 +203,19 @@ function displayIncoming(
   participantId: string,
   media: 'audio' | 'video',
   name = 'Contacto',
+  expiresAt?: string,
 ) {
   const keep = getCallKeep();
   if (!snapshot.ready || !keep || shown.has(callId)) return;
-  shown.set(callId, { incoming: true, active: false, muted: false });
+  shown.set(callId, {
+    incoming: true,
+    active: false,
+    muted: false,
+    participantId,
+    media,
+    name,
+    expiresAt,
+  });
   keep.displayIncomingCall(
     callId,
     participantId || 'Messinger',
@@ -205,6 +223,33 @@ function displayIncoming(
     'generic',
     media === 'video',
   );
+}
+
+/** Telecom authorizes presentation with showIncomingCallUi; the app supplies the notification. */
+function showIncomingUi(id: string) {
+  const native = shown.get(id);
+  if (!native?.incoming || native.answered) return;
+  if (
+    current?.callId === id &&
+    (current.answering || (current.status !== 'ringing' && current.status !== 'requesting'))
+  )
+    return;
+  native.uiRequested = true;
+  showIncomingCallNotification({
+    callId: id,
+    callerId: native.participantId ?? '',
+    name: native.name ?? 'Contacto',
+    media: native.media ?? 'audio',
+    expiresAt: native.expiresAt,
+  });
+}
+
+function answer(id: string) {
+  const native = shown.get(id);
+  if (!native || native.answered) return;
+  native.answered = true;
+  dismissIncomingCallNotification(id);
+  getCallKeep()?.answerIncomingCall(id);
 }
 
 function sync(call: CallView | null) {
@@ -216,6 +261,8 @@ function sync(call: CallView | null) {
     return;
   }
   const terminal = call.status !== 'requesting' && isTerminal(call.status);
+  if (call.answering || (call.status !== 'requesting' && call.status !== 'ringing'))
+    dismissIncomingCallNotification(id);
   if (terminal || (!call.selected && call.status !== 'requesting' && call.status !== 'ringing')) {
     if (shown.has(id)) {
       shown.delete(id);
@@ -230,12 +277,25 @@ function sync(call: CallView | null) {
     return;
   }
   if (call.incoming && call.status === 'ringing')
-    displayIncoming(id, call.participantId, call.media);
+    displayIncoming(id, call.participantId, call.media, 'Contacto', call.expiresAt ?? undefined);
   if (!call.incoming && !shown.has(id)) {
     shown.set(id, { incoming: false, active: false, muted: false });
     keep.startCall(id, call.participantId, 'Contacto', 'generic', call.media === 'video');
   }
   const native = shown.get(id);
+  if (
+    native &&
+    call.incoming &&
+    call.selected &&
+    (call.status === 'accepted' || call.status === 'connected')
+  )
+    answer(id);
+  if (native?.uiRequested && call.status === 'ringing' && !call.answering) {
+    native.expiresAt = call.expiresAt ?? undefined;
+    native.media = call.media;
+    native.participantId = call.participantId;
+    showIncomingUi(id);
+  }
   if (native && call.status === 'connected' && !native.active) {
     native.active = true;
     keep.setCurrentCallActive(id);
@@ -260,6 +320,7 @@ function clear() {
   const keep = getCallKeep();
   for (const id of shown.keys()) keep?.reportEndCallWithUUID(id, 2);
   shown.clear();
+  dismissAllIncomingCallNotifications();
   current = null;
   routeVersion++;
   setupVersion++;
@@ -280,6 +341,7 @@ function clear() {
 export const nativeCallService = {
   ensureReady,
   displayIncoming,
+  showIncomingUi,
   sync,
   refreshRoutes,
   toggleSpeaker,
@@ -287,12 +349,19 @@ export const nativeCallService = {
   clear,
   hasCall: (id: string) => shown.has(id),
   adopt: (id: string, incoming: boolean) => {
-    if (!shown.has(id)) shown.set(id, { incoming, active: false, muted: false });
+    if (!shown.has(id))
+      shown.set(id, { incoming, active: false, muted: false, answered: incoming });
   },
-  answer: (id: string) => getCallKeep()?.answerIncomingCall(id),
+  answer,
   foreground: () => getCallKeep()?.backToForeground(),
   updateName: (id: string, name: string, participantId: string) => {
-    if (shown.has(id)) getCallKeep()?.updateDisplay(id, name, participantId);
+    const native = shown.get(id);
+    if (native) {
+      native.name = name;
+      native.participantId = participantId;
+      getCallKeep()?.updateDisplay(id, name, participantId);
+      if (native.uiRequested) showIncomingUi(id);
+    }
   },
   initialEvents: () => getCallKeep()?.getInitialEvents(),
   reachable: () => getCallKeep()?.setReachable(),
