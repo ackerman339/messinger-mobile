@@ -7,6 +7,10 @@ import { Button, Input, Text, YStack } from 'tamagui';
 
 import Logo from '@/assets/images/messinger-logo.svg';
 import { authService } from '@/src/services/auth';
+import {
+  registerPushNotifications,
+  setPushRegistrationUser,
+} from '@/src/services/push-registration';
 
 export default function AuthPage() {
   const [loginKey, setLoginKey] = useState('');
@@ -18,7 +22,10 @@ export default function AuthPage() {
     setSubmitting(true);
 
     try {
-      await authService.signIn({ loginKey });
+      const user = await authService.signIn({ loginKey });
+      // The HTTP interceptor has already persisted the session tokens at this point.
+      setPushRegistrationUser(user.id);
+      void registerPushNotifications(user.id, { requestPermission: true, force: true });
       router.replace('/chat');
     } catch (error: unknown) {
       if (!(error instanceof AxiosError)) {
