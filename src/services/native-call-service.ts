@@ -5,6 +5,8 @@ import type { AudioRoute, Events, EventsPayload } from 'react-native-callkeep';
 import type { CallView } from '../state/call-session';
 import { isTerminal } from '../types/call';
 import { hasNativeCalling } from '../rtc/native-webrtc';
+import { finishCallPresentation } from './native-call-media';
+import { getNativeIncomingCall } from './native-incoming-call';
 import {
   dismissAllIncomingCallNotifications,
   dismissIncomingCallNotification,
@@ -123,6 +125,7 @@ async function ensureReady() {
 function setProximity() {
   const inCall =
     !!current &&
+    current.media === 'audio' &&
     !current.held &&
     current.selected &&
     (current.status === 'accepted' || current.status === 'connected');
@@ -207,6 +210,10 @@ function displayIncoming(
 ) {
   const keep = getCallKeep();
   if (!snapshot.ready || !keep || shown.has(callId)) return;
+  const deadline = expiresAt ? Date.parse(expiresAt) : Date.now() + 60_000;
+  if (!Number.isFinite(deadline) || deadline <= Date.now()) return;
+  // Hand off before Telecom can request its UI. This survives completion of the Expo headless task.
+  getNativeIncomingCall()?.prepareIncomingCall?.(callId, participantId, media, name, deadline);
   shown.set(callId, {
     incoming: true,
     active: false,
@@ -264,6 +271,7 @@ function sync(call: CallView | null) {
   if (call.answering || (call.status !== 'requesting' && call.status !== 'ringing'))
     dismissIncomingCallNotification(id);
   if (terminal || (!call.selected && call.status !== 'requesting' && call.status !== 'ringing')) {
+    finishCallPresentation(id);
     if (shown.has(id)) {
       shown.delete(id);
       keep.reportEndCallWithUUID(
@@ -318,7 +326,10 @@ function on<E extends Events>(event: E, handler: (data: EventsPayload[E]) => voi
 
 function clear() {
   const keep = getCallKeep();
-  for (const id of shown.keys()) keep?.reportEndCallWithUUID(id, 2);
+  for (const id of shown.keys()) {
+    finishCallPresentation(id);
+    keep?.reportEndCallWithUUID(id, 2);
+  }
   shown.clear();
   dismissAllIncomingCallNotifications();
   current = null;

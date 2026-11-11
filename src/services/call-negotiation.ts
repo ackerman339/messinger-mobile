@@ -32,6 +32,7 @@ export function createCallNegotiation(store: CallStore, lifecycle: CallLifecycle
 
   function prepare(session: Session): Promise<RTCPeerConnection> {
     return session.rtc.prepare(session.view.media, {
+      callId: session.view.callId!,
       isActive: () => store.live(session),
       onCandidate: (candidate) => {
         if (!session.negotiation || !session.view.callId) {

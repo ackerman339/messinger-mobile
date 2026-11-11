@@ -3,6 +3,7 @@ import { createCallRingtone, getCallSound } from './call-ringtone';
 import { isTerminal } from '../types/call';
 import type { CallView } from '../state/call-session';
 import { getNativeCallTone } from './native-call-tone';
+import { getNativeIncomingCall } from './native-incoming-call';
 
 // Shared by foreground React and headless push execution; AppState does not own call audio.
 let current: CallView | null = null;
@@ -88,6 +89,11 @@ export function syncCallSound(call: CallView | null) {
   }
   const expired = expiresAt !== undefined && expiresAt <= Date.now();
   const sound = expired || silencedKey === key ? undefined : getCallSound(call);
+  // Android repeats the incoming notification ringtone itself, including on cold starts.
+  if (sound === 'incoming' && getNativeIncomingCall()) {
+    stopTone();
+    return;
+  }
   if (!sound) {
     stopTone();
     return;

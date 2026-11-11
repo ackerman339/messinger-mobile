@@ -33,7 +33,8 @@ module.exports = function withAndroidCalls(config) {
       services.push(connection);
     }
     connection.$['android:label'] = 'Messinger';
-    connection.$['android:foregroundServiceType'] = 'phoneCall';
+    // Ringing starts as phoneCall only. Microphone is added after permission, before capture.
+    connection.$['android:foregroundServiceType'] = 'phoneCall|microphone';
     let background = services.find(
       (item) => item.$['android:name'] === 'io.wazo.callkeep.RNCallKeepBackgroundMessagingService',
     );

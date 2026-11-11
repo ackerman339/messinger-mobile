@@ -10,10 +10,14 @@ import {
   getCallUser,
   hasActiveCall,
   respondToCall,
+  receiveCallPush,
   setCallUser,
 } from '../services/call-runtime';
 import { nativeCallService } from '../services/native-call-service';
 import { subscribeCallNotifications } from '../tasks/call-notifications';
+import { useCallScreenAwake } from '../hooks/use-call-screen-awake';
+import { useLocalSearchParams } from 'expo-router';
+import { explainFullScreenCallPermission } from '../services/call-fullscreen-permission';
 
 import type { ReactNode } from 'react';
 import type { CallMedia } from '../types/call';
@@ -25,6 +29,23 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const [starting, setStarting] = useState(false);
   const startInFlight = useRef(false);
   const userId = user?.id;
+  const { incomingCall } = useLocalSearchParams<{ incomingCall?: string }>();
+  useCallScreenAwake(call);
+  useEffect(() => {
+    if (
+      !userId ||
+      typeof incomingCall !== 'string' ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(incomingCall)
+    )
+      return;
+    // A full-screen launch only displays the panel. Accept/reject remain explicit actions.
+    void receiveCallPush({
+      type: 'call-incoming',
+      callId: incomingCall.toLowerCase(),
+      callerId: '',
+      media: 'audio',
+    }).catch(() => {});
+  }, [incomingCall, userId]);
 
   useEffect(() => {
     const unsubscribe = callClient.subscribe(() => setCall(callClient.getSnapshot()));
@@ -40,9 +61,10 @@ export function CallProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setCallUser(hasNativeCalling() ? userId : undefined);
     if (!userId || !hasNativeCalling()) return;
-    void nativeCallService
-      .ensureReady()
-      .then(() => nativeCallService.sync(callClient.getSnapshot()));
+    void nativeCallService.ensureReady().then(() => {
+      nativeCallService.sync(callClient.getSnapshot());
+      void explainFullScreenCallPermission().catch(() => {});
+    });
     const notifications = subscribeCallNotifications();
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active')

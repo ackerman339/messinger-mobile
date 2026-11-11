@@ -21,6 +21,14 @@ export function createNotificationLoader(stubs = {}) {
     }).outputText;
     source = source
       .replace(
+        /import \{ useEffect \} from 'react';/g,
+        'const { useEffect } = globalThis.__notificationTest.react;',
+      )
+      .replace(
+        /import \{([^}]+)\} from 'expo-keep-awake';/g,
+        'const {$1} = globalThis.__notificationTest.keepAwake;',
+      )
+      .replace(
         /import \{ router \} from 'expo-router';/g,
         'const router = globalThis.__notificationTest.router;',
       )

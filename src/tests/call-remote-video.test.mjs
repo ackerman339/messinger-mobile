@@ -118,6 +118,8 @@ const load = createNotificationLoader({
     'export const getIceServers = async () => [{urls:"stun:example.test:3478"}];',
   '/services/call-permissions.ts': 'export const requestCallPermissions = async () => {};',
   '/services/call-sound-service.ts': 'export const stopCallSoundBeforeMedia = async () => {};',
+  '/services/native-call-media.ts':
+    'export const startCallMedia = async () => {}; export const stopCallMedia = () => {};',
 });
 const { createPeerSession } = await load('rtc/peer-session');
 const { getVideoStreamKey } = await load('rtc/video-stream');
@@ -130,6 +132,7 @@ async function setup(t, media = 'video') {
   captured = new Stream([track('audio'), ...(media === 'video' ? [track('video')] : [])], 'native');
   const session = createPeerSession();
   await session.prepare(media, {
+    callId: 'video-test-call',
     isActive: () => true,
     onCandidate() {},
     onConnectionState() {},

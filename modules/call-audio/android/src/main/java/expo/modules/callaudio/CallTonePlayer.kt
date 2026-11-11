@@ -1,6 +1,5 @@
 package expo.modules.callaudio
 
-import android.app.NotificationManager
 import android.annotation.TargetApi
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -17,8 +16,8 @@ import android.util.Log
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import java.util.Locale
 
-/** A process-wide player, independent of React views, JS timers and headless-task completion.
- * CallKeep's phoneCall foreground service keeps the incoming connection alive while ringing.
+/** Outgoing ringback, independent of React views and JS timers.
+ * Incoming ringing belongs to CallIncomingNotification and Android's notification sound player.
  * All mutable state and MediaPlayer operations run on Android's main thread.
  */
 @TargetApi(26)
@@ -28,13 +27,11 @@ internal object CallTonePlayer {
   private var registered = false
   private var key: String? = null
   private var callId = ""
-  private var incoming = false
   private var expiresAt = 0L
   private var blocked = false
   private var player: MediaPlayer? = null
   private var audio: AudioManager? = null
   private var focus: AudioFocusRequest? = null
-  private val authorized = linkedSetOf<String>()
   private val stopped = linkedSetOf<String>()
   private val expire = Runnable { silence() }
 
@@ -45,17 +42,24 @@ internal object CallTonePlayer {
       val attributes = intent.getSerializableExtra("attributeMap") as? HashMap<*, *> ?: return
       val id = (attributes["EXTRA_CALL_UUID"] as? String)?.lowercase(Locale.ROOT) ?: return
       if (intent.action == "ACTION_SHOW_INCOMING_CALL_UI") {
-        remember(authorized, id)
-        if (incoming && callId == id) play(context)
-      } else {
-        remember(stopped, id)
-        if (callId == id) silence()
+        CallIncomingNotification.onTelecomUi(context, id)
+        return
       }
+      if (intent.action == "ACTION_ON_SILENCE_INCOMING_CALL") CallIncomingNotification.silence(context, id)
+      else {
+        CallIncomingNotification.dismiss(context, id)
+        if (intent.action != "ACTION_ANSWER_CALL") {
+          CallMediaSession.stop(id)
+          CallWindowState.finish(id)
+        }
+      }
+      remember(stopped, id)
+      if (callId == id) silence()
     }
   }
 
+  @Synchronized
   fun initialize(context: Context) {
-    main.post {
       if (!registered) {
         val filter = IntentFilter().apply {
           addAction("ACTION_SHOW_INCOMING_CALL_UI")
@@ -68,18 +72,16 @@ internal object CallTonePlayer {
         LocalBroadcastManager.getInstance(context).registerReceiver(receiver, filter)
         registered = true
       }
-    }
   }
 
   fun start(context: Context, toneKey: String, uuid: String, sound: String, deadline: Long) {
     initialize(context)
     main.post {
-      if (sound != "incoming" && sound != "outgoing") return@post
+      if (sound != "outgoing") return@post
       if (key != toneKey) {
         silence()
         key = toneKey
         blocked = false
-        incoming = sound == "incoming"
       }
       callId = uuid.lowercase(Locale.ROOT)
       expiresAt = deadline
@@ -91,7 +93,7 @@ internal object CallTonePlayer {
       }
       // The expiry remains native even if Android suspends JavaScript.
       main.postDelayed(expire, remaining.coerceAtMost(120_000L))
-      if (!incoming || authorized.contains(callId)) play(context)
+      play(context)
     }
   }
 
@@ -109,16 +111,8 @@ internal object CallTonePlayer {
       return
     }
     val manager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-    if (incoming) {
-      val notifications = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-      // Respect the device's silent/vibrate mode and DND call policy.
-      if (manager.ringerMode != AudioManager.RINGER_MODE_NORMAL ||
-        manager.getStreamVolume(AudioManager.STREAM_RING) == 0 ||
-        notifications.currentInterruptionFilter == NotificationManager.INTERRUPTION_FILTER_NONE ||
-        notifications.currentInterruptionFilter == NotificationManager.INTERRUPTION_FILTER_ALARMS) return
-    }
     val attributes = AudioAttributes.Builder()
-      .setUsage(if (incoming) AudioAttributes.USAGE_NOTIFICATION_RINGTONE else AudioAttributes.USAGE_VOICE_COMMUNICATION_SIGNALLING)
+      .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION_SIGNALLING)
       .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
       .build()
     val ringtone = MediaPlayer()
@@ -140,13 +134,12 @@ internal object CallTonePlayer {
       ringtone.setAudioAttributes(attributes)
       ringtone.setWakeMode(context, PowerManager.PARTIAL_WAKE_LOCK)
       ringtone.isLooping = true
-      val volume = if (incoming) 0.6f else 0.3f
-      ringtone.setVolume(volume, volume)
+      ringtone.setVolume(0.3f, 0.3f)
       ringtone.setOnPreparedListener {
         if (player === it && !blocked) {
           if (System.currentTimeMillis() < expiresAt) {
             it.start()
-            Log.d(TAG, if (incoming) "Incoming ringtone started" else "Outgoing ringback started")
+            Log.d(TAG, "Outgoing ringback started")
           } else silence()
         }
       }
@@ -155,8 +148,7 @@ internal object CallTonePlayer {
         if (player === failed) silence()
         true
       }
-      val resource = if (incoming) R.raw.messinger_incoming_call else R.raw.messinger_outgoing_call
-      context.resources.openRawResourceFd(resource).use {
+      context.resources.openRawResourceFd(R.raw.messinger_outgoing_call).use {
         ringtone.setDataSource(it.fileDescriptor, it.startOffset, it.length)
       }
       ringtone.prepareAsync()

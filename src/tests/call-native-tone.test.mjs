@@ -140,3 +140,10 @@ test('older binaries without tone methods are detected before invoking new nativ
   environment.audio = { getBuiltinOutputs() {} };
   assert.equal(getNativeCallTone(), undefined);
 });
+test('incoming calls delegate the ringtone to the Android notification without a second player', async (t) => {
+  await reset(t);
+  environment.audio = { ...audio, presentIncomingCall() {}, dismissIncomingCall() {} };
+  service.syncCallSound(call());
+  await flush();
+  assert.equal(operations.length, 0);
+});

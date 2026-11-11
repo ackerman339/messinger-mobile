@@ -5,8 +5,10 @@ import { stopCallSoundBeforeMedia } from '../services/call-sound-service';
 import { getIceServers } from '../services/ice-api';
 import { requestCallPermissions } from '../services/call-permissions';
 import type { CallIceCandidate, CallMedia } from '../types/call';
+import { startCallMedia, stopCallMedia } from '../services/native-call-media';
 
 interface PeerCallbacks {
+  callId: string;
   isActive: () => boolean;
   onCandidate: (candidate: CallIceCandidate | null) => void;
   onStreams: (local: MediaStream, remote?: MediaStream) => void;
@@ -36,6 +38,7 @@ export function createPeerSession() {
   let preparing: Promise<RTCPeerConnection> | undefined;
   let generation = 0;
   let frontCamera = true;
+  let mediaCallId: string | undefined;
 
   function prepare(media: CallMedia, callbacks: PeerCallbacks) {
     if (peer) return Promise.resolve(peer);
@@ -55,16 +58,31 @@ export function createPeerSession() {
     await requestCallPermissions(media);
     const iceServers = await getIceServers();
     if (!active()) throw new Error('Sesión finalizada');
-    const captured = await rtc.mediaDevices.getUserMedia({
-      audio: true,
-      video:
-        media === 'video' ? { facingMode: 'user', width: 640, height: 480, frameRate: 30 } : false,
-    });
+    mediaCallId = callbacks.callId;
+    await startCallMedia(callbacks.callId);
+    if (!active()) {
+      stopCallMedia(callbacks.callId);
+      throw new Error('Sesión finalizada');
+    }
+    let captured: MediaStream;
+    try {
+      captured = await rtc.mediaDevices.getUserMedia({
+        audio: true,
+        video:
+          media === 'video'
+            ? { facingMode: 'user', width: 640, height: 480, frameRate: 30 }
+            : false,
+      });
+    } catch (error) {
+      stopCallMedia(callbacks.callId);
+      throw error;
+    }
     if (!active()) {
       release(captured);
       throw new Error('Sesión finalizada');
     }
     local = captured;
+    frontCamera = true;
     try {
       const connection = new rtc.RTCPeerConnection({ iceServers });
       peer = connection;
@@ -148,6 +166,8 @@ export function createPeerSession() {
     generation++;
     peer?.close();
     peer = undefined;
+    if (mediaCallId) stopCallMedia(mediaCallId);
+    mediaCallId = undefined;
     release(local);
     // PeerConnection owns native remote streams. Only release the synthetic fallback ourselves.
     release(streamless);

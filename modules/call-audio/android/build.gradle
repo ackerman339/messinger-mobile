@@ -9,8 +9,25 @@ version = '1.0.0'
 android {
   namespace 'expo.modules.callaudio'
   defaultConfig { versionCode 1; versionName '1.0.0' }
+  testOptions {
+    unitTests.includeAndroidResources = true
+    unitTests.all {
+      def isolatedHome = new File(gradle.gradleUserHomeDir, 'robolectric-home')
+      isolatedHome.mkdirs()
+      systemProperty 'user.home', isolatedHome.absolutePath
+      jvmArgs '--add-opens=java.base/java.lang=ALL-UNNAMED', '--add-opens=java.base/java.util=ALL-UNNAMED',
+        '--add-opens=java.base/java.io=ALL-UNNAMED', '--add-opens=java.base/java.net=ALL-UNNAMED'
+      systemProperty 'robolectric.dependency.repo.url', 'https://repo.maven.apache.org/maven2'
+      systemProperty 'maven.repo.local', new File(gradle.gradleUserHomeDir, 'robolectric-m2').absolutePath
+    }
+  }
 }
 
 dependencies {
   implementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.1.0'
+  implementation project(':react-native-callkeep')
+  implementation project(':expo-notifications')
+  testImplementation 'junit:junit:4.13.2'
+  testImplementation 'org.robolectric:robolectric:4.17'
+  testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2'
 }

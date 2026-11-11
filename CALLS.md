@@ -10,10 +10,10 @@ La implementación usa Expo SDK 54, React Native WebRTC y la integración de And
 - Captura de audio/video mediante WebRTC nativo, credenciales del endpoint existente `/turn/credentials`, oferta/respuesta, ICE, hashes y confirmaciones/reintentos de SDP.
 - Un solo peer en la conexión seleccionada. Las señales antiguas y los resultados de permisos/captura posteriores al cierre no reactivan una llamada.
 - Micrófono, encendido/apagado de cámara y cambio frontal/trasera sin crear otra llamada ni negociar por cada control. La cámara apagada muestra únicamente un icono. La captura de video se pausa al pasar a segundo plano y se restaura respetando su estado apagado y las llamadas en espera.
-- Telecom en modo autogestionado (`selfManaged: true`): no pide activar una cuenta en ajustes. La app presenta una notificación propia con Aceptar/Rechazar y conserva su pantalla y controles. Se mantiene el servicio en primer plano de tipo `phoneCall` y el WebSocket durante la llamada.
+- Telecom en modo autogestionado (`selfManaged: true`): el servicio comienza como `phoneCall` al repicar y añade `microphone` después de conceder permiso, antes de capturar audio. Un wake lock de CPU mantiene el procesamiento de medios y señalización con la pantalla apagada. La llamada conserva Aceptar/Rechazar y la pantalla completa al estar bloqueada, cuando Android lo permite.
 - Audio de voz por auricular y video por altavoz inicialmente. No se reemplaza una selección Bluetooth/audífonos existente. El botón para alternar altavoz/auricular aparece únicamente si Android detecta físicamente ambas salidas. Se conserva una ruta Bluetooth/audífonos seleccionada por Android; los controles propios alternan entre auricular y altavoz cuando ambos existen.
-- Proximidad: pantalla apagada al acercar el teléfono al oído cuando se usa el auricular interno. Se libera al cambiar de salida, poner en espera o finalizar.
-- Tono entrante y repique saliente en bucle nativo de Android, tanto para voz como video, con los mismos WAV y volúmenes del cliente web (entrante 0.6, saliente 0.3). La push despierta la sesión compartida y Telecom mantiene el servicio `phoneCall`; una vez preparado, el reproductor no depende de React, de Expo Audio ni de temporizadores JS. Se detiene al atender, rechazar, cancelar, silenciar desde Telecom, vencer o finalizar la llamada.
+- Proximidad solo para voz por auricular. En video, `use-call-screen-awake.ts` evita el apagado automático de la pantalla; libera la protección al finalizar o salir a segundo plano. Apagar manualmente la pantalla pausa el video y conserva el audio.
+- El timbre entrante usa el WAV en el canal nativo `messinger-incoming-calls-v3`, con `FLAG_INSISTENT`: Android repite el sonido hasta atender/rechazar, cancelar, silenciar o vencer. El volumen depende del timbre del teléfono y respeta silencio/No molestar. El repique saliente conserva su reproductor nativo independiente de React y el volumen 0.3 del cliente web.
 - Antes de tomar el micrófono para una llamada se detiene una grabación de nota de voz en curso, evitando que Expo Audio y WebRTC compitan por su sesión.
 
 ## Organización
@@ -23,6 +23,8 @@ La implementación usa Expo SDK 54, React Native WebRTC y la integración de And
 | `src/calls/componentes` | Pantalla, controles, botones de chat y RTCView; sin señalización dentro de la UI |
 | `src/contexts/call-context.tsx`, `src/providers/call-provider.tsx` | Acciones/estado para React y coordinación con el usuario autenticado |
 | `src/hooks/use-call-panel.ts` | Modelo de presentación, nombre y duración |
+| `src/hooks/use-call-screen-awake.ts` | Pantalla encendida durante video, con liberación segura aun si termina mientras se activa |
+| `src/services/native-call-media.ts`, `native-incoming-call.ts` | Puentes al servicio de micrófono y al aviso nativo entrante |
 | `src/services/call-sound-service.ts`, `native-call-tone.ts`, `call-ringtone.ts` | Estados de timbre/repique y puente al reproductor Android; fallback de Expo Audio para binarios antiguos de desarrollo |
 | `src/clients/call-client.ts` | Composición funcional de estado, ciclo de vida, eventos y negociación |
 | `src/state`, `src/events`, `src/signaling` | Sesión, eventos del protocolo, deduplicación, hashes y reintentos |
@@ -42,7 +44,7 @@ Las funciones propias de JavaScript/TypeScript no usan clases. La única clase p
 
 ## Instalación y ejecución
 
-Las llamadas necesitan una compilación Android con WebRTC, CallKeep y el módulo local. No funcionan en Expo Go. El reproductor nativo de timbre amplía ese módulo y requiere instalar un APK nuevo. `runtimeVersion` pasa a `1.0.1` para que una OTA con las nuevas funciones nativas no llegue al APK anterior.
+Las llamadas necesitan una compilación Android con WebRTC, CallKeep y el módulo local. No funcionan en Expo Go. Este incremento necesita un APK nuevo con `runtimeVersion: 1.0.2`, `FOREGROUND_SERVICE_MICROPHONE` y `USE_FULL_SCREEN_INTENT`. `expo-notifications` se compila desde código fuente en Android para reutilizar sus constructores nativos y sus acciones sin reemplazar la suscripción push ni el protocolo del backend.
 
 1. Instalar dependencias con la versión de pnpm del proyecto.
 2. Mantener las variables `EXPO_PUBLIC_API_URL`, `EXPO_PUBLIC_API_PREFIX`, `EXPO_PUBLIC_API_VERSION` y `EXPO_PUBLIC_WEB_SOCKET_URL` existentes. La configuración Firebase ya utiliza `google-services.json`.
@@ -73,7 +75,7 @@ El backend termina una llamada si pierde el WebSocket seleccionado. La app evita
 - `expo prebuild --platform android --no-install`: validación de los plugins y del manifest generado.
 - `./gradlew :messinger-call-audio:compileReleaseKotlin` desde `android`: compilación real del módulo local y sus recursos contra las dependencias de Expo.
 
-La revisión ejecutó 86 pruebas Node, TypeScript, lint, Expo Doctor (18/18) y el bundle Android. Además, se prepararon JDK 17 y Android SDK 36 en una carpeta temporal y se compiló correctamente `:messinger-call-audio:compileReleaseKotlin`. Esto verifica el Kotlin real, incluido el retorno explícito de `Unit` en la función asíncrona sin argumentos; no equivale a compilar el APK completo ni a probarlo en un teléfono. Permanecen advertencias de APIs obsoletas de las dependencias.
+La revisión ejecutó 94 pruebas Node, tres pruebas nativas, TypeScript, lint, Expo Doctor (18/18) y el bundle Android. Además, se prepararon JDK 17 y Android SDK 36 en una carpeta temporal y se compiló correctamente `:messinger-call-audio:compileReleaseKotlin`. Esto verifica el Kotlin real, incluido el retorno explícito de `Unit` en la función asíncrona sin argumentos; no equivale a compilar el APK completo ni a probarlo en un teléfono. Permanecen advertencias de APIs obsoletas de las dependencias.
 
 Las pruebas de regresión reproducen cierres/mensajes tardíos del WebSocket después de una reconexión, renovación de sesión sin enviar al socket cerrado y lectura tardía del token. Los avisos de llamadas permiten reintentar tras conceder permisos o restaurar la sesión; el fallo de una presentación antigua no descarta una actualización que sigue en cola.
 
@@ -97,21 +99,23 @@ Las push remotas que ya envía el backend se presentan por el transporte nativo 
 
 ### Distribución de este incremento
 
-Los avisos de mensajes privados y las acciones de llamadas son JavaScript, pero el timbre nativo requiere primero un APK nuevo: `npx eas-cli@latest build --platform android --profile preview`. Instalarlo sobre la versión anterior y abrirlo una vez. Las OTA posteriores deben conservar el canal `preview`, el entorno `preview` y el runtime `1.0.1` de ese APK. No se publica ninguna actualización ni se dispara una build desde este cambio.
+Generar un APK nuevo: `npx eas-cli@latest build --platform android --profile preview`. Instalarlo y abrirlo una vez. Las OTA posteriores deben conservar el canal `preview`, el entorno `preview` y el runtime `1.0.2` de ese APK. Una OTA sobre `1.0.1` no incorpora estos cambios nativos. No se publica una OTA ni se inicia una build de EAS desde este cambio.
 
-Probar en Android físico: aceptar/rechazar y tocar el cuerpo del aviso con app abierta, en segundo plano y arrancando en frío; cancelación desde el llamante; permisos de notificación revocados; mensajes privados con app cerrada, otro chat abierto y el chat correspondiente ya visible. Los canales de Android respetan el sonido, la visibilidad y las restricciones configuradas por el usuario. Se usa una notificación con acciones, no una actividad nueva de pantalla completa.
+Probar en Android físico: aceptar/rechazar y tocar el cuerpo del aviso con app abierta, en segundo plano y arrancando en frío; cancelación desde el llamante; permisos de notificación revocados; mensajes privados con app cerrada y el chat abierto. La intención de pantalla completa abre el panel sobre el bloqueo sin aceptar automáticamente. Android decide entre pantalla completa y aviso emergente según bloqueo, uso del teléfono y permisos. Si Android 14+ deniega pantalla completa, se explica una vez cómo concederla; el aviso y timbre siguen disponibles.
 
 ## Repetición de tonos
 
 `call-runtime.ts` sincroniza el sonido antes de la integración de Telecom y lo detiene inmediatamente al aceptar/rechazar. Ya no hay un hook de UI que corte el audio en cada cambio de AppState. El mismo estado activa el tono entrante mientras `ringing`, y el saliente mientras `requesting`/`ringing`, igual que en web.
 
-`native-call-tone.ts` utiliza las nuevas funciones de `MessingerCallAudio`. `CallTonePlayer.kt` reproduce recursos `res/raw` con `MediaPlayer`, repetición nativa y wake lock durante la reproducción. El entrante usa el volumen de timbre del teléfono; el saliente usa audio de señalización de voz. No altera la ruta de audio de la conversación. El entrante espera `ACTION_SHOW_INCOMING_CALL_UI`, cuando Telecom ya creó el servicio `phoneCall`; el receptor nativo también escucha respuesta, fin, silencio y fallos de conexión aunque JavaScript esté suspendido.
+`CallIncomingNotification.kt` reutiliza `ExpoNotificationBuilder` para conservar los intents y payloads de Aceptar/Rechazar y clic en el cuerpo. Añade la intención de pantalla completa antes de publicar, sonido y `FLAG_INSISTENT`; el receptor de Telecom puede publicarla incluso después de terminar la tarea headless, usando los datos entregados antes de registrar la llamada. No necesita que React continúe montado ni que JavaScript pida foco de audio. `CallWindowState.kt` permite mostrar únicamente el panel de llamada sobre el bloqueo y retira ese permiso al terminar. `CallTonePlayer.kt` conserva solo el repique saliente y escucha los eventos de Telecom para detener recursos y silenciar avisos.
 
 El vencimiento se programa en Android y se comprueba antes de reproducir, sin depender del intervalo JS. Al aceptar, WebRTC espera que el hilo principal nativo libere el reproductor y el foco de audio antes de capturar medios. Cada llamada tiene una clave propia: los refrescos y la llegada tardía del UUID saliente no reinician el sonido, y una acción vieja no silencia otra llamada. Un binario antiguo de desarrollo conserva el fallback anterior de Expo Audio, que no garantiza timbre con app cerrada.
 
-El canal `messinger-incoming-calls-v2` es visual/vibración y deja el sonido al reproductor en bucle. Se utiliza otro identificador porque Android no permite cambiar por código el sonido de un canal ya creado. El transporte remoto del backend sigue usando su canal existente; una push de llamada puede emitir su aviso inicial antes de que el cliente la sustituya por el aviso local.
+El nuevo canal `messinger-incoming-calls-v3` incluye el WAV de timbre; `v2` era silencioso y no puede cambiar su sonido una vez creado. El transporte remoto del backend sigue usando su canal existente; una push puede emitir su aviso inicial antes de que el cliente la sustituya por el aviso de llamada nativo.
 
-Este cambio requiere compilar e instalar un APK con runtime `1.0.1`; una OTA sobre el APK anterior no agrega Kotlin ni recursos nativos. La reproducción con app cerrada normalmente, pantalla bloqueada y cambios de ruta requiere validación en un teléfono físico. Se respeta el volumen de timbre, el modo silencio/vibración y No molestar. Forzar detención desde ajustes bloquea la entrega push hasta abrir de nuevo la app.
+Este cambio requiere compilar e instalar un APK con runtime `1.0.2`. La reproducción con app cerrada normalmente, pantalla bloqueada y cambios de ruta requiere validación en un teléfono físico. Forzar detención desde ajustes bloquea la entrega push hasta abrir de nuevo la app.
+
+Se ejecutaron 94 pruebas Node y tres pruebas nativas con Robolectric. Las nativas usan el constructor real de Expo y comprueban repetición, acciones, intención de pantalla completa y descarte de llamadas vencidas o canceladas. `:messinger-call-audio:testReleaseUnitTest` también compila el Kotlin de producción. Sigue siendo necesaria la prueba física del micrófono con pantalla bloqueada y de la política de presentación de cada teléfono.
 
 Para la comprobación: instalar el APK, iniciar sesión y cerrar desde recientes; llamar desde otro usuario con la pantalla bloqueada; comprobar repetición, rechazo, aceptación y cancelación remota. Repetir para voz/video y comprobar el repique al llamar. `adb logcat -s MessingerCallTone RNCallKeep` muestra el inicio nativo y posibles errores de preparación o foco. Los tests Node validan el puente y la coordinación; no ejecutan el reproductor de Android.
 

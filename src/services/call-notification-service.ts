@@ -13,6 +13,7 @@ import {
 import { isExpiredCallPush, parseCallPush } from './call-push';
 import { silenceCallSound } from './call-sound-service';
 import type { CallMedia } from '../types/call';
+import { getNativeIncomingCall } from './native-incoming-call';
 
 type IncomingCall = {
   callId: string;
@@ -89,27 +90,37 @@ export function showIncomingCallNotification(call: IncomingCall) {
         pending.fingerprint = '';
         return;
       }
-      await Notifications.scheduleNotificationAsync({
-        identifier: identifier(call.callId),
-        content: {
-          title: call.name || 'Contacto',
-          body: call.media === 'video' ? 'Videollamada entrante' : 'Llamada de voz entrante',
-          data: {
-            type: 'call-incoming',
-            callId: call.callId,
-            callerId: call.callerId,
-            media: call.media,
-            expiresAt: new Date(expires).toISOString(),
-            localNotification: 'call',
+      const native = getNativeIncomingCall();
+      if (native) {
+        await native.presentIncomingCall(
+          call.callId,
+          call.callerId,
+          call.media,
+          call.name || 'Contacto',
+          expires,
+        );
+      } else
+        await Notifications.scheduleNotificationAsync({
+          identifier: identifier(call.callId),
+          content: {
+            title: call.name || 'Contacto',
+            body: call.media === 'video' ? 'Videollamada entrante' : 'Llamada de voz entrante',
+            data: {
+              type: 'call-incoming',
+              callId: call.callId,
+              callerId: call.callerId,
+              media: call.media,
+              expiresAt: new Date(expires).toISOString(),
+              localNotification: 'call',
+            },
+            categoryIdentifier: INCOMING_CALL_CATEGORY,
+            sound: false,
+            sticky: true,
+            autoDismiss: false,
+            priority: Notifications.AndroidNotificationPriority.MAX,
           },
-          categoryIdentifier: INCOMING_CALL_CATEGORY,
-          sound: false,
-          sticky: true,
-          autoDismiss: false,
-          priority: Notifications.AndroidNotificationPriority.MAX,
-        },
-        trigger: { channelId: INCOMING_CALL_CHANNEL },
-      });
+          trigger: { channelId: INCOMING_CALL_CHANNEL },
+        });
       if (!live()) await Notifications.dismissNotificationAsync(identifier(call.callId));
       else await dismissCallPushNotification({ ...call, type: 'call-incoming' });
     })
@@ -123,6 +134,7 @@ export function showIncomingCallNotification(call: IncomingCall) {
 }
 
 export function dismissIncomingCallNotification(callId: string) {
+  getNativeIncomingCall()?.dismissIncomingCall(callId);
   silenceCallSound(callId);
   blockCallNotification(callId);
   const entry = entries.get(callId);
