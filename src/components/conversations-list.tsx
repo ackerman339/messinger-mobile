@@ -1,6 +1,6 @@
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, type ListRenderItem } from 'react-native';
 import { Avatar, Button, Input, Text, XStack, YStack } from 'tamagui';
 
@@ -41,7 +41,7 @@ export function ConversationList() {
    *
    * Same behavior as the web implementation.
    */
-  useEffect(() => {
+  useLayoutEffect(() => {
     const unsubscribeNewConversationFrom = wsClient.on(
       WS_SERVER_EVENTS.NEW_MESSAGE,
       async (message) => {
@@ -143,7 +143,6 @@ export function ConversationList() {
           />
         </XStack>
       </YStack>
-
       {loadingConversations && conversationsItems.length === 0 ? (
         <ListState label='Cargando conversaciones...' />
       ) : !loadingConversations && conversationsItems.length === 0 ? (
@@ -219,32 +218,22 @@ function ConversationRow({ conversation, isActive, onSelect }: ConversationRowPr
   /**
    * Listen for incoming messages.
    */
-  useEffect(() => {
+  useLayoutEffect(() => {
     const unsubscribeNewMessage = wsClient.on(WS_SERVER_EVENTS.NEW_MESSAGE, async (message) => {
-      /**
-       * Message belongs to the active conversation.
-       *
-       * Update the last message preview and reset
-       * unread messages on the server.
-       */
-      if (activeConversation?.id === message.conversation.id) {
-        setLastMessageContent(message.content);
-
-        await conversationService.resetUnreadMessagesCount({
-          conversationId: activeConversation.id,
-        });
-
+      if (message.conversation.id !== conversation.id) {
         return;
       }
 
-      /**
-       * Message belongs to this conversation while
-       * the user is viewing another conversation.
-       */
-      if (message.conversation.id === conversation.id) {
+      if (!activeConversation || activeConversation.id !== conversation.id) {
         setUnreadMessageCount((previous) => previous + 1);
+      }
 
-        setLastMessageContent(message.content);
+      setLastMessageContent(message.content);
+
+      if (activeConversation) {
+        await conversationService.resetUnreadMessagesCount({
+          conversationId: activeConversation.id,
+        });
       }
     });
 
@@ -261,7 +250,7 @@ function ConversationRow({ conversation, isActive, onSelect }: ConversationRowPr
       unsubscribeNewMessage();
       unsubscribeMessageSent();
     };
-  }, [activeConversation?.id, conversation.id]);
+  }, [activeConversation, conversation.id]);
 
   /**
    * Reset local unread count when this conversation
