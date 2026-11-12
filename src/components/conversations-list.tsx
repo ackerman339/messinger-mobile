@@ -180,6 +180,9 @@ export function ConversationList() {
           }
         />
       )}
+      <Text color='red' fontSize='$1'>
+        APK version 1.0.2
+      </Text>
     </YStack>
   );
 }
