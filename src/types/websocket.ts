@@ -1,9 +1,8 @@
-import { CALL_CLIENT_EVENTS, CALL_SERVER_EVENTS } from './call';
 import type { CallClientPayloads, CallServerPayloads } from './call';
+import { CALL_CLIENT_EVENTS, CALL_SERVER_EVENTS } from './call';
 import type { Message } from './conversation';
 
 export const WS_CLIENT_EVENTS = {
-  ...CALL_CLIENT_EVENTS,
   AUTH_TOKEN_SENT: 'AUTH_TOKEN_SENT',
   SEND_PRIVATE_MESSAGE: 'SEND_PRIVATE_MESSAGE',
   SEND_GROUP_MESSAGE: 'SEND_GROUP_MESSAGE',
@@ -14,10 +13,11 @@ export const WS_CLIENT_EVENTS = {
   GROUP_INVITATION_REJECT: 'GROUP_INVITATION_REJECT',
   TYPING_START: 'TYPING_START',
   TYPING_STOP: 'TYPING_STOP',
+  PRESENCE_ONLINE: 'PRESENCE_ONLINE',
+  ...CALL_CLIENT_EVENTS,
 } as const;
 
 export const WS_SERVER_EVENTS = {
-  ...CALL_SERVER_EVENTS,
   REQUEST_AUTH_TOKEN: 'REQUEST_AUTH_TOKEN',
   MESSAGE_SENT: 'MESSAGE_SENT',
   NEW_MESSAGE: 'NEW_MESSAGE',
@@ -33,6 +33,7 @@ export const WS_SERVER_EVENTS = {
   TYPING_STARTED: 'TYPING_STARTED',
   TYPING_STOPPED: 'TYPING_STOPPED',
   ERROR: 'ERROR',
+  ...CALL_SERVER_EVENTS,
 } as const;
 
 export type WsErrorCode =
@@ -97,6 +98,10 @@ export interface GroupInvitationDto {
   conversationId: string;
 }
 
+export interface UserPresenceOnlineDto {
+  receiverId: string;
+}
+
 // --- Payloads del CLIENTE -> server ---
 export interface WsClientPayloads extends CallClientPayloads {
   [WS_CLIENT_EVENTS.SEND_PRIVATE_MESSAGE]: PrivateMessageDto;
@@ -109,6 +114,7 @@ export interface WsClientPayloads extends CallClientPayloads {
   [WS_CLIENT_EVENTS.TYPING_START]: { conversationId: string };
   [WS_CLIENT_EVENTS.TYPING_STOP]: { conversationId: string };
   [WS_CLIENT_EVENTS.AUTH_TOKEN_SENT]: { accessToken: string };
+  [WS_CLIENT_EVENTS.PRESENCE_ONLINE]: UserPresenceOnlineDto;
 }
 
 // --- Data real que manda el SERVIDOR ---
@@ -147,10 +153,12 @@ export interface WsServerPayloads extends CallServerPayloads {
     conversationId: string;
   };
   [WS_SERVER_EVENTS.PRESENCE_ONLINE]: {
-    userId: string;
+    online: boolean;
+    lastSeenAt: Date | null;
   };
   [WS_SERVER_EVENTS.PRESENCE_OFFLINE]: {
-    userId: string;
+    online: boolean;
+    lastSeenAt: Date | null;
   };
   [WS_SERVER_EVENTS.TYPING_STARTED]: {
     userId: string;
