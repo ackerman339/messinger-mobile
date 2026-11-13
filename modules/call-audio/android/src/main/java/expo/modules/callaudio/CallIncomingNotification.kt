@@ -87,7 +87,8 @@ internal object CallIncomingNotification {
     withContext(Dispatchers.Main) {
       if (dismissed.contains(id) || revisions[id]?.get() != revision || deadline <= System.currentTimeMillis()) return@withContext
       val builder = Notification.Builder.recoverBuilder(context, base).setCategory(Notification.CATEGORY_CALL)
-        .setVisibility(Notification.VISIBILITY_PUBLIC).setOnlyAlertOnce(true)
+        // ONLY_ALERT_ONCE stops an existing insistent ringtone when caller details are updated.
+        .setVisibility(Notification.VISIBILITY_PUBLIC).setOnlyAlertOnce(silenced.contains(id))
         .setTimeoutAfter(deadline - System.currentTimeMillis())
       val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
       if (intent != null && (Build.VERSION.SDK_INT < 34 || manager(context).canUseFullScreenIntent())) {

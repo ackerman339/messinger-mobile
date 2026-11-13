@@ -1,13 +1,13 @@
 {
   "expo": {
-    "name": "messinger-mobile",
+    "name": "pulse",
     "slug": "messinger-mobile",
-    "version": "1.0.0",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "messingermobile",
     "userInterfaceStyle": "automatic",
-    "runtimeVersion": "1.0.2",
+    "runtimeVersion": "1.0.3",
     "updates": {
       "enabled": true,
       "url": "https://u.expo.dev/c96e488c-1f41-481e-be73-c97239e168b6",

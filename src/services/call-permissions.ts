@@ -14,7 +14,7 @@ async function waitForForeground() {
     });
     const timer = setTimeout(() => {
       subscription.remove();
-      reject(new Error('Abre Messinger para permitir el micrófono y la cámara.'));
+      reject(new Error('Abre pulse para permitir el micrófono y la cámara.'));
     }, 15_000);
     // The app may have become visible between the initial check and subscription.
     if (AppState.currentState === 'active') {

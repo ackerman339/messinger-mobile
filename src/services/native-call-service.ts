@@ -28,9 +28,9 @@ export interface NativeCallSnapshot {
 }
 
 const options = {
-  ios: { appName: 'Messinger' },
+  ios: { appName: 'pulse' },
   android: {
-    alertTitle: 'Llamadas de Messinger',
+    alertTitle: 'Llamadas de pulse',
     alertDescription: 'Permite el micrófono para comunicarte con tus contactos.',
     cancelButton: 'Cancelar',
     okButton: 'Continuar',
@@ -39,7 +39,7 @@ const options = {
     foregroundService: {
       channelId: 'messinger-ongoing-calls',
       channelName: 'Llamadas en curso',
-      notificationTitle: 'Llamada de Messinger en curso',
+      notificationTitle: 'Llamada de pulse en curso',
       notificationIcon: 'ic_messinger_call',
       // Phone-call service, including while the incoming call is still ringing.
       foregroundServiceType: 4,
@@ -225,7 +225,7 @@ function displayIncoming(
   });
   keep.displayIncomingCall(
     callId,
-    participantId || 'Messinger',
+    participantId || 'pulse',
     name,
     'generic',
     media === 'video',

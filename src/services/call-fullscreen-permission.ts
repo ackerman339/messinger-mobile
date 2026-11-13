@@ -24,7 +24,7 @@ export async function explainFullScreenCallPermission() {
     await SecureStore.setItemAsync(key, 'shown');
     Alert.alert(
       'Mostrar llamadas con la pantalla bloqueada',
-      'Permite las notificaciones de pantalla completa de Messinger para ver el panel de llamadas entrantes con el teléfono bloqueado.',
+      'Permite las notificaciones de pantalla completa de pulse para ver el panel de llamadas entrantes con el teléfono bloqueado.',
       [
         { text: 'Ahora no', style: 'cancel' },
         { text: 'Abrir ajustes', onPress: () => audio.openFullScreenCallSettings?.() },

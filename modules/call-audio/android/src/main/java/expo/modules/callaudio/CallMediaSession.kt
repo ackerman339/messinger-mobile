@@ -78,7 +78,7 @@ internal object CallMediaSession {
       notifications.createNotificationChannel(NotificationChannel(channel, "Llamadas en curso", NotificationManager.IMPORTANCE_LOW))
     }
     val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) Notification.Builder(context, channel) else Notification.Builder(context)
-    return builder.setSmallIcon(android.R.drawable.sym_call_incoming).setContentTitle("Llamada de Messinger en curso")
+    return builder.setSmallIcon(android.R.drawable.sym_call_incoming).setContentTitle("Llamada de pulse en curso")
       .setCategory(Notification.CATEGORY_SERVICE).setOngoing(true).build()
   }
 }
