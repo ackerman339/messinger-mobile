@@ -305,11 +305,12 @@ for (const [action, expected] of [
 ]) {
   test(`notification ${action} maps only to its explicit call action`, async (t) => {
     await reset(t);
+    const call = makeCall();
     await tasks.handleCallNotificationResponse({
-      notification: notification({ type: 'call-incoming', ...makeCall() }),
+      notification: notification({ type: 'call-incoming', ...call }),
       actionIdentifier: action,
     });
-    assert.deepEqual(calls, [['respond', id, expected]]);
+    assert.deepEqual(calls, [['respond', id, expected, call.expiresAt]]);
   });
 }
 test('unknown notification actions and expired taps cannot accidentally accept a call', async (t) => {

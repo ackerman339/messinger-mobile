@@ -16,6 +16,10 @@ La selección se hace con PowerManager.isInteractive, sin depender del estado in
 
 El servicio recibe una push válida después de comprobar sesión y vencimiento. Inicia la presentación antes del handshake del WebSocket y después solicita CALL_SYNC: un estado terminado del servidor retira la llamada. Una llamada vencida no se vuelve a presentar.
 
+El backend debe enviar el push de cada llamada nueva aunque el destinatario tenga conexiones WebSocket. Una conexión puede pertenecer a otro equipo o seguir registrada mientras Android suspende el móvil. Ambos transportes usan el mismo callId para deduplicar la presentación.
+
+La consulta inicial usa el expiresAt del backend o un respaldo de 60 segundos si falta. Al aceptar/rechazar, el margen para consultar el estado es de 60 segundos en lugar de 15; el vencimiento real de la llamada sigue comprobándose por separado. La restauración inicial del usuario conserva el trabajo iniciado por la tarea push.
+
 El cierre desde recientes está cubierto por la tarea push y el servicio nativo. El cierre forzado desde los ajustes de Android bloquea la recepción de FCM hasta abrir otra vez la app. También siguen aplicándose las restricciones de entrega y batería del sistema.
 
 ## Responsabilidades

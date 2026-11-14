@@ -31,7 +31,11 @@ async function ensureCallConnection() {
   wsClient.connect(url);
 }
 /** Called only by an explicit user action in React or a notification response. */
-export async function respondToCall(callId: string, action: 'accept' | 'reject') {
+export async function respondToCall(
+  callId: string,
+  action: 'accept' | 'reject',
+  expiresAt?: string,
+) {
   callId = callId.toLowerCase();
   if (action === 'accept' && responseIntents.get(callId) === 'reject') return;
   responseIntents.set(callId, action);
@@ -42,8 +46,8 @@ export async function respondToCall(callId: string, action: 'accept' | 'reject')
   try {
     await ensureCallConnection();
     if (responseIntents.get(callId) !== action) return;
-    if (action === 'accept') callClient.answerFromNotification(callId);
-    else callClient.rejectFromNotification(callId);
+    if (action === 'accept') callClient.answerFromNotification(callId, expiresAt);
+    else callClient.rejectFromNotification(callId, expiresAt);
   } catch (error) {
     nativeCallService.reportError(error);
   }
@@ -107,7 +111,11 @@ export async function receiveCallPush(push: CallPush) {
   if (hasActiveCall() && callClient.getSnapshot()?.callId !== push.callId) return;
   if (!(await nativeCallService.ensureReady()) || version !== authVersion) return;
   startCallRuntime();
-  callClient.inspectFromNotification(push.callId);
+  callClient.inspectFromNotification(push.callId, {
+    participantId: push.callerId,
+    media: push.media,
+    expiresAt: push.expiresAt,
+  });
   const current = callClient.getSnapshot();
   if (
     !current ||

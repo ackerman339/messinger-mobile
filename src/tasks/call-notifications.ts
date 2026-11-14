@@ -41,7 +41,7 @@ export async function handleCallNotificationResponse(
     action !== Notifications.DEFAULT_ACTION_IDENTIFIER
   )
     return false;
-  await respondToCall(push.callId, action === 'reject' ? 'reject' : 'accept');
+  await respondToCall(push.callId, action === 'reject' ? 'reject' : 'accept', push.expiresAt);
   return true;
 }
 

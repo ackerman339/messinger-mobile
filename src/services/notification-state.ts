@@ -7,7 +7,9 @@ const messages = new Map<string, { source: 'local' | 'remote'; at: number }>();
 const dismissedCalls = new Set<string>();
 
 export function setNotificationUser(id: string) {
-  if (id !== userId) {
+  // Initial hydration belongs to the session already read by the headless push task.
+  // Only a logout or an actual account change invalidates that task's queued work.
+  if (id !== userId && (userId !== undefined || loggedOut)) {
     messages.clear();
     dismissedCalls.clear();
     conversationId = undefined;

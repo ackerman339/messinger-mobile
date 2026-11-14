@@ -1,12 +1,12 @@
+import { wsClient } from '@/src/clients/websocket-client';
 import { randomUUID } from 'expo-crypto';
+import type { CallView, CallSession as Session } from '../state/call-session';
+import { createCallSession } from '../state/call-session';
+import type { CallStore } from '../state/call-store';
+import type { CallMedia, CallStatus } from '../types/call';
 import { releaseChatRecorderForCall } from './call-audio-ownership';
 import { requestCallPermissions } from './call-permissions';
 import { startCallMedia } from './native-call-media';
-import { createCallSession } from '../state/call-session';
-import type { CallMedia, CallStatus } from '../types/call';
-import type { CallStore } from '../state/call-store';
-import type { CallSession as Session } from '../state/call-session';
-import { wsClient } from '@/src/clients/websocket-client';
 export function createCallLifecycle(store: CallStore) {
   function start(participantId: string, media: CallMedia) {
     const current = store.getSession();
@@ -30,7 +30,11 @@ export function createCallLifecycle(store: CallStore) {
     wsClient.emit('CALL_INIT', { requestId: session.requestId!, calleeId: participantId, media });
   }
 
-  function respondFromNotification(callId: string, action?: 'accept' | 'reject') {
+  function respondFromNotification(
+    callId: string,
+    action?: 'accept' | 'reject',
+    incoming?: Partial<Pick<CallView, 'participantId' | 'media' | 'expiresAt'>>,
+  ) {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(callId)) return;
     if (store.terminalIds.has(callId)) return;
     let session = store.getSession();
@@ -58,8 +62,14 @@ export function createCallLifecycle(store: CallStore) {
     }
     // Notification actions use fresh server state before accepting or rejecting.
     session.notificationAction = action;
-    session.notificationResponseDeadline = Date.now() + 15_000;
+    const expiresAt = incoming?.expiresAt ?? session.view.expiresAt;
+    session.notificationResponseDeadline = action
+      ? Date.now() + 60_000
+      : expiresAt
+        ? Date.parse(expiresAt)
+        : Date.now() + 60_000;
     store.publish(session, {
+      ...incoming,
       answering: !!action,
       notice:
         action === 'reject'
@@ -71,16 +81,19 @@ export function createCallLifecycle(store: CallStore) {
     sync(session);
   }
 
-  function inspectFromNotification(callId: string) {
-    respondFromNotification(callId);
+  function inspectFromNotification(
+    callId: string,
+    incoming?: Pick<CallView, 'participantId' | 'media' | 'expiresAt'>,
+  ) {
+    respondFromNotification(callId, undefined, incoming);
   }
 
-  function answerFromNotification(callId: string) {
-    respondFromNotification(callId, 'accept');
+  function answerFromNotification(callId: string, expiresAt?: string) {
+    respondFromNotification(callId, 'accept', expiresAt ? { expiresAt } : undefined);
   }
 
-  function rejectFromNotification(callId: string) {
-    respondFromNotification(callId, 'reject');
+  function rejectFromNotification(callId: string, expiresAt?: string) {
+    respondFromNotification(callId, 'reject', expiresAt ? { expiresAt } : undefined);
   }
 
   async function accept() {
@@ -203,7 +216,7 @@ export function createCallLifecycle(store: CallStore) {
     const now = Date.now();
     if (
       session.view.incoming &&
-      session.view.status === 'ringing' &&
+      (session.view.status === 'ringing' || session.view.status === 'requesting') &&
       session.view.expiresAt &&
       now >= Date.parse(session.view.expiresAt)
     ) {
