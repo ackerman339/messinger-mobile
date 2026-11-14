@@ -23,6 +23,11 @@ class CallAudioModule : Module() {
     Name("MessingerCallAudio")
     Events("onCallAudioRoutesChanged")
     Function("getCallFlowVersion") { 2 }
+    Function("setCallPushUser") { user: String? ->
+      val context = context()
+      if (CallPushSession.user(context) != user) CallService.clear()
+      CallPushSession.set(context, user)
+    }
     Function("setCallPanelVisible") { id: String, visible: Boolean ->
       CallWindowState.panel(id, visible)
       Unit

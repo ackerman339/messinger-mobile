@@ -125,16 +125,25 @@ internal object CallIncomingNotification {
     call: CallInfo,
     fullScreen: Boolean,
     silenced: Boolean,
+    serviceFailed: Boolean = false,
   ): Notification {
     channels(context)
+    if (serviceFailed) context.getSystemService(NotificationManager::class.java).createNotificationChannel(
+      NotificationChannel("pulse-call-fallback", "Avisos de llamadas", NotificationManager.IMPORTANCE_HIGH).apply {
+        setSound(android.provider.Settings.System.DEFAULT_RINGTONE_URI,
+          android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION_RINGTONE).build())
+        enableVibration(true)
+      }
+    )
     val answer = response(context, call, "accept")
     val reject = response(context, call, "reject")
     val builder =
-      NotificationCompat.Builder(context, CHANNEL)
+      NotificationCompat.Builder(context, if (serviceFailed) "pulse-call-fallback" else CHANNEL)
         .setSmallIcon(android.R.drawable.sym_call_incoming)
         .setContentTitle(call.name)
         .setContentText(
-          if (call.media == "video") "Videollamada entrante" else "Llamada de voz entrante"
+          if (serviceFailed) "Llamada entrante: abre pulse para atender"
+          else if (call.media == "video") "Videollamada entrante" else "Llamada de voz entrante"
         )
         .setCategory(NotificationCompat.CATEGORY_CALL)
         .setPriority(NotificationCompat.PRIORITY_MAX)

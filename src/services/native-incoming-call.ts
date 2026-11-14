@@ -2,6 +2,7 @@ import { requireOptionalNativeModule } from 'expo';
 import { Platform } from 'react-native';
 interface NativeIncomingCall {
   getCallFlowVersion(): number;
+  setCallPushUser?(user: string | null): void;
   presentIncomingCall(
     id: string,
     caller: string,

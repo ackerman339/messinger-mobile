@@ -21,7 +21,13 @@ internal object CallTonePlayer {
 
   fun startIncoming(context: Context, callId: String, expires: Long) {
     val manager = context.getSystemService(AudioManager::class.java)
-    val filter = context.getSystemService(NotificationManager::class.java).currentInterruptionFilter
+    val notifications = context.getSystemService(NotificationManager::class.java)
+    val filter = notifications.currentInterruptionFilter
+    if (!notifications.areNotificationsEnabled() ||
+      notifications.getNotificationChannel(CallIncomingNotification.CHANNEL)?.importance == NotificationManager.IMPORTANCE_NONE) {
+      Log.i("PulseCallPush", "callId=$callId stage=notification-blocked")
+      return
+    }
     if (
       manager.ringerMode != AudioManager.RINGER_MODE_NORMAL ||
         filter == NotificationManager.INTERRUPTION_FILTER_NONE ||
@@ -78,11 +84,14 @@ internal object CallTonePlayer {
                     focused = true
                     resume(tone)
                   }
-                  AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                  AudioManager.AUDIOFOCUS_LOSS_TRANSIENT, AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
                     focused = false
                     if (ready && tone.isPlaying) tone.pause()
                   }
-                  AudioManager.AUDIOFOCUS_LOSS -> release()
+                  AudioManager.AUDIOFOCUS_LOSS -> {
+                    release()
+                    if (incoming) CallService.retryRingtone(callId)
+                  }
                 }
             },
             main,
@@ -128,8 +137,16 @@ internal object CallTonePlayer {
   private fun resume(tone: MediaPlayer) {
     if (player === tone && ready && focused) {
       if (System.currentTimeMillis() < deadline) {
-        tone.start()
-        if (key?.startsWith("incoming:") == true) CallService.ringtoneStarted(id)
+        val callId = id
+        val incoming = key?.startsWith("incoming:") == true
+        try {
+          tone.start()
+          if (incoming) CallService.ringtoneStarted(callId)
+        } catch (error: Exception) {
+          release()
+          Log.w("PulseCallPush", "callId=$callId stage=ringtone-start-failed error=${error.javaClass.simpleName}")
+          if (incoming) CallService.retryRingtone(callId)
+        }
       } else release()
     }
   }

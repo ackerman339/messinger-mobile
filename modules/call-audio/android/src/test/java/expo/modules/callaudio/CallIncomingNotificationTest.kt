@@ -88,6 +88,7 @@ class CallIncomingNotificationTest {
         players.size,
       )
       assertTrue(players.last().isPlaying)
+      assertEquals(!screenOn, shadowOf(service).lastForegroundNotification.fullScreenIntent != null)
       service.answer(call.id, "foreground")
       service.activate(call.id, "foreground")
       if (android.os.Build.VERSION.SDK_INT >= 29)

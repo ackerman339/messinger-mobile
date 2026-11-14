@@ -26,6 +26,7 @@ class CallService : Service() {
   private var phase = Phase.RINGING
   private var owner: String? = null
   private var silenced = false
+  private var fullScreen = false
   private var ringtoneAttempts = 0
   private var cpu: PowerManager.WakeLock? = null
   private val main = Handler(Looper.getMainLooper())
@@ -58,6 +59,7 @@ class CallService : Service() {
     if (
       intent.getIntExtra("epoch", epoch) != epoch ||
         data.id.isBlank() ||
+        (intent.hasExtra("sessionUser") && intent.getStringExtra("sessionUser") != CallPushSession.user(this)) ||
         closed.contains(data.id) ||
         (intent.action == INCOMING && data.deadline <= System.currentTimeMillis())
     ) {
@@ -80,10 +82,11 @@ class CallService : Service() {
         owner = null
         silenced = false
         ringtoneAttempts = 0
+        fullScreen = intent.getBooleanExtra("screenOff", !getSystemService(PowerManager::class.java).isInteractive)
       }
       call = data
-      val screenOff = !getSystemService(PowerManager::class.java).isInteractive
-      publish(CallIncomingNotification.incoming(this, data, first && screenOff, silenced))
+      publish(CallIncomingNotification.incoming(this, data, fullScreen, silenced))
+      android.util.Log.i("PulseCallPush", "callId=${data.id} stage=foreground fullScreen=$fullScreen")
       pendingOwners[data.id]?.let {
         answer(data.id, it)
         return START_NOT_STICKY
@@ -222,9 +225,11 @@ class CallService : Service() {
 
     internal fun current() = running?.call
 
-    internal fun incoming(context: Context, data: CallInfo) {
+    internal fun incoming(context: Context, data: CallInfo, screenOff: Boolean = !context.getSystemService(PowerManager::class.java).isInteractive, sessionUser: String? = null) {
       if (data.deadline <= System.currentTimeMillis() || closed.contains(data.id)) return
-      context.startForegroundService(data.intent(context, INCOMING).putExtra("epoch", epoch))
+      context.startForegroundService(data.intent(context, INCOMING).putExtra("epoch", epoch).putExtra("screenOff", screenOff).apply {
+        if (sessionUser != null) putExtra("sessionUser", sessionUser)
+      })
     }
 
     internal fun outgoing(context: Context, data: CallInfo, actor: String? = null) {
@@ -295,16 +300,17 @@ class CallService : Service() {
       if (
         service.call?.id != id ||
           service.phase != Phase.RINGING ||
-          service.silenced ||
-          service.ringtoneAttempts >= 5
+          service.silenced
       )
         return
       service.ringtoneAttempts++
       service.main.removeCallbacks(service.retryRing)
-      service.main.postDelayed(service.retryRing, 200)
+      android.util.Log.w("PulseCallPush", "callId=$id stage=ringtone-retry attempt=${service.ringtoneAttempts}")
+      service.main.postDelayed(service.retryRing, (200L * service.ringtoneAttempts.coerceAtMost(25)))
     }
 
     fun ringtoneStarted(id: String) {
+      android.util.Log.i("PulseCallPush", "callId=$id stage=ringtone-started")
       running?.takeIf { it.call?.id == id }?.let { it.ringtoneAttempts = 0 }
     }
   }

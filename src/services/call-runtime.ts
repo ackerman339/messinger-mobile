@@ -1,3 +1,4 @@
+import { getNativeIncomingCall } from './native-incoming-call';
 import { AppState, Platform } from 'react-native';
 import { createCallClient } from '../clients/call-client';
 import { wsClient } from '../clients/websocket-client';
@@ -82,9 +83,11 @@ export function startCallRuntime() {
 export function setCallUser(userId?: string) {
   if (activeUser && activeUser !== userId) stopCallRuntime();
   activeUser = userId;
+  getNativeIncomingCall()?.setCallPushUser?.(userId ?? null);
   if (userId) startCallRuntime();
 }
 export function stopCallRuntime() {
+  getNativeIncomingCall()?.setCallPushUser?.(null);
   authVersion++;
   activeUser = undefined;
   callClient.end();
