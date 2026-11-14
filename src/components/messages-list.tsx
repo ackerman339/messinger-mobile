@@ -433,7 +433,7 @@ function MessageBubble({ message, selected, onSelect }: MessageBubbleProps) {
           ) : null}
           <XStack justify='flex-end' items='center' gap='$1' mt='$1'>
             <Text fontSize='$1' color='$textSecondary'>
-              {format(new Date(message.createdAt), 'dd MMM HH:mm', {
+              {format(new Date(message.createdAt), 'dd MMM hh:mm a', {
                 locale: es,
               })}
             </Text>
