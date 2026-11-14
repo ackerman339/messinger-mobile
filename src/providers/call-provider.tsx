@@ -1,29 +1,29 @@
+import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, AppState } from 'react-native';
 import { CallContext } from '../contexts/call-context';
 import { useUserContext } from '../contexts/user-context';
+import { useCallScreenAwake } from '../hooks/use-call-screen-awake';
 import { hasNativeCalling } from '../rtc/native-webrtc';
 import { releaseChatRecorderForCall } from '../services/call-audio-ownership';
+import { explainFullScreenCallPermission } from '../services/call-fullscreen-permission';
 import { requestCallPermissions } from '../services/call-permissions';
 import {
   callClient,
   getCallUser,
   hasActiveCall,
-  respondToCall,
   receiveCallPush,
+  respondToCall,
   setCallUser,
 } from '../services/call-runtime';
 import { nativeCallService } from '../services/native-call-service';
 import { subscribeCallNotifications } from '../tasks/call-notifications';
-import { useCallScreenAwake } from '../hooks/use-call-screen-awake';
-import { useLocalSearchParams } from 'expo-router';
-import { explainFullScreenCallPermission } from '../services/call-fullscreen-permission';
 
 import type { ReactNode } from 'react';
 import type { CallMedia } from '../types/call';
 
 export function CallProvider({ children }: { children: ReactNode }) {
-  const { user } = useUserContext();
+  const { user, loading } = useUserContext();
   const [call, setCall] = useState(callClient.getSnapshot);
   const [native, setNative] = useState(nativeCallService.getSnapshot);
   const [starting, setStarting] = useState(false);
@@ -59,10 +59,13 @@ export function CallProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (loading) return;
     setCallUser(hasNativeCalling() ? userId : undefined);
     if (!userId || !hasNativeCalling()) return;
     void nativeCallService.ensureReady().then(() => {
       nativeCallService.sync(callClient.getSnapshot());
+      const incoming = nativeCallService.getIncoming();
+      if (incoming) void receiveCallPush(incoming).catch(() => {});
       void explainFullScreenCallPermission().catch(() => {});
     });
     const notifications = subscribeCallNotifications();
@@ -76,7 +79,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       notifications();
       subscription.remove();
     };
-  }, [userId]);
+  }, [userId, loading]);
 
   async function handleStartCall(participantId: string, media: CallMedia) {
     if (startInFlight.current || hasActiveCall() || !userId) return;
@@ -91,11 +94,13 @@ export function CallProvider({ children }: { children: ReactNode }) {
     setStarting(true);
     try {
       await releaseChatRecorderForCall();
-      await requestCallPermissions(media);
+      await requestCallPermissions(media, true);
       if (!(await nativeCallService.ensureReady()))
         throw new Error(
           nativeCallService.getSnapshot().error ?? 'No se pudo iniciar la integración de llamadas.',
         );
+      if (getCallUser() !== userId) return;
+      await nativeCallService.beginOutgoing(participantId, media);
       if (getCallUser() !== userId) return;
       callClient.start(participantId, media);
     } catch (error) {

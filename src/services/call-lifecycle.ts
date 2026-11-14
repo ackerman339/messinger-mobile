@@ -1,6 +1,7 @@
 import { randomUUID } from 'expo-crypto';
 import { releaseChatRecorderForCall } from './call-audio-ownership';
 import { requestCallPermissions } from './call-permissions';
+import { startCallMedia } from './native-call-media';
 import { createCallSession } from '../state/call-session';
 import type { CallMedia, CallStatus } from '../types/call';
 import type { CallStore } from '../state/call-store';
@@ -92,13 +93,16 @@ export function createCallLifecycle(store: CallStore) {
     ) {
       try {
         await releaseChatRecorderForCall();
-        await requestCallPermissions(session.view.media);
+        await requestCallPermissions(session.view.media, true);
         if (store.live(session) && session.view.status === 'ringing') {
           if (session.view.expiresAt && Date.parse(session.view.expiresAt) <= Date.now()) {
             finish(session, 'missed', 'La llamada ya expiró.');
             return;
           }
-          wsClient.emit('CALL_ACCEPT', { callId: session.view.callId });
+          // Establish microphone eligibility while the user-facing activity is visible.
+          await startCallMedia(session.view.callId, session.view.media);
+          if (store.live(session) && session.view.status === 'ringing')
+            wsClient.emit('CALL_ACCEPT', { callId: session.view.callId });
         }
       } catch (error) {
         if (store.live(session)) fail(session, error);
@@ -197,6 +201,15 @@ export function createCallLifecycle(store: CallStore) {
       return;
     }
     const now = Date.now();
+    if (
+      session.view.incoming &&
+      session.view.status === 'ringing' &&
+      session.view.expiresAt &&
+      now >= Date.parse(session.view.expiresAt)
+    ) {
+      finish(session, 'missed', 'La llamada ya expiró.');
+      return;
+    }
     if (
       (session.notificationAction ||
         (session.view.status === 'requesting' && session.view.incoming)) &&

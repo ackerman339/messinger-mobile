@@ -2,8 +2,8 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
 export const INCOMING_CALL_CATEGORY = 'messingerIncomingCall';
-// Sound is immutable on Android channels; v2 delegates ringing to the looping call player.
-export const INCOMING_CALL_CHANNEL = 'messinger-incoming-calls-v3';
+// The foreground call service owns the ringtone; notification updates are silent.
+export const INCOMING_CALL_CHANNEL = 'pulse-incoming-calls-v2';
 export const MESSAGE_CHANNEL = 'messages';
 let setup: Promise<void> | undefined;
 let messageSetup: Promise<void> | undefined;
@@ -36,7 +36,7 @@ export function configureNotificationChannels() {
       await Notifications.setNotificationChannelAsync(INCOMING_CALL_CHANNEL, {
         name: 'Llamadas entrantes',
         importance: Notifications.AndroidImportance.MAX,
-        sound: 'messinger_incoming_call.wav',
+        sound: null,
         enableVibrate: true,
         vibrationPattern: [0, 500, 300, 500],
         lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,

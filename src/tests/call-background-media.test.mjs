@@ -23,6 +23,7 @@ class Peer {
 const environment = {
   native: { Platform: { OS: 'android', Version: 36 } },
   audio: {
+    getCallFlowVersion: () => 2,
     startCallMedia: async (id) => {
       events.push(['protect', id]);
       await promote();

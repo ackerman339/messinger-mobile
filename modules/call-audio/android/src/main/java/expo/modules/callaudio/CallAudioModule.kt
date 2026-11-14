@@ -1,122 +1,143 @@
 package expo.modules.callaudio
 
-import android.content.Context
+import android.content.Intent
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
-import android.os.Build
-import android.os.PowerManager
-import expo.modules.kotlin.functions.Queues
-import expo.modules.kotlin.functions.Coroutine
-import android.app.Application
-import android.app.NotificationManager
-import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.provider.Settings
+import expo.modules.kotlin.functions.Coroutine
+import expo.modules.kotlin.functions.Queues
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import java.time.Instant
+import java.util.UUID
 
-/** Telecom remains the sole owner of communication audio routing. */
 class CallAudioModule : Module() {
-  private var proximityLock: PowerManager.WakeLock? = null
+  private val owner = UUID.randomUUID().toString()
+
+  private fun context() =
+    appContext.reactContext?.applicationContext ?: error("Android no está disponible.")
 
   override fun definition() = ModuleDefinition {
     Name("MessingerCallAudio")
+    Events("onCallAudioRoutesChanged")
+    Function("getCallFlowVersion") { 2 }
+    Function("setCallPanelVisible") { id: String, visible: Boolean ->
+      CallWindowState.panel(id, visible)
+      Unit
+    }
+    OnCreate {
+      CallAudioRoutes.observers[owner] = {
+        sendEvent("onCallAudioRoutesChanged", mapOf("routes" to CallAudioRoutes.routes()))
+      }
+    }
+    OnDestroy { CallAudioRoutes.observers.remove(owner) }
 
     Function("canUseFullScreenCalls") {
-      val context = appContext.reactContext
-      Build.VERSION.SDK_INT < 34 || (context?.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager)?.canUseFullScreenIntent() == true
+      Build.VERSION.SDK_INT < 34 ||
+        context()
+          .getSystemService(android.app.NotificationManager::class.java)
+          .canUseFullScreenIntent()
     }
     Function("openFullScreenCallSettings") {
-      appContext.reactContext?.let { context ->
-        if (Build.VERSION.SDK_INT >= 34) context.startActivity(
-          Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:${context.packageName}"))
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+      if (Build.VERSION.SDK_INT >= 34)
+        context()
+          .startActivity(
+            Intent(
+                Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
+                Uri.parse("package:" + context().packageName),
+              )
+              .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+          )
+    }
+    AsyncFunction("presentIncomingCall") {
+        id: String,
+        caller: String,
+        media: String,
+        name: String,
+        expires: Double ->
+        CallService.incoming(context(), CallInfo(id, caller, media, name, expires.toLong()))
       }
-      Unit
-    }
-
-    OnCreate {
-      (appContext.reactContext?.applicationContext as? Application)?.let { CallWindowState.initialize(it) }
-      appContext.currentActivity?.let { CallWindowState.attach(it) }
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        appContext.reactContext?.let { CallTonePlayer.initialize(it.applicationContext) }
+      .runOnQueue(Queues.MAIN)
+    AsyncFunction("presentOutgoingCall") {
+        id: String,
+        caller: String,
+        media: String,
+        name: String,
+        expires: Double ->
+        CallService.outgoing(
+          context(),
+          CallInfo(id, caller, media, name, expires.toLong(), false),
+          owner,
+        )
       }
+      .runOnQueue(Queues.MAIN)
+    Function("getIncomingCall") {
+      CallService.current()
+        ?.takeIf { it.incoming }
+        ?.let {
+          mapOf(
+            "type" to "call-incoming",
+            "callId" to it.id,
+            "callerId" to it.caller,
+            "media" to it.media,
+            "name" to it.name,
+            "expiresAt" to Instant.ofEpochMilli(it.deadline).toString(),
+          )
+        }
     }
+    Function("acceptIncomingCall") { id: String -> CallService.accept(id, owner) }
+    Function("dismissIncomingCall") { id: String -> CallService.dismissIncoming(id) }
+    Function("silenceIncomingCall") { id: String -> CallService.silence(id) }
+    Function("finishCallPresentation") { id: String, remote: Boolean ->
+      CallService.finish(id, owner, remote)
+    }
+    Function("clearCalls") { CallService.clear() }
 
-    AsyncFunction("startCallMedia") Coroutine { id: String ->
-      val context = appContext.reactContext?.applicationContext ?: error("Android no está disponible.")
-      CallMediaSession.start(context, id)
-    }
-    Function("stopCallMedia") { id: String -> CallMediaSession.stop(id) }
-    Function("finishCallPresentation") { id: String ->
-      CallMediaSession.stop(id)
-      CallWindowState.finish(id)
-      appContext.reactContext?.let { CallIncomingNotification.dismiss(it, id) }
-    }
-    AsyncFunction("presentIncomingCall") Coroutine { id: String, caller: String, media: String, name: String, expires: Double ->
-      val context = appContext.reactContext?.applicationContext ?: error("Android no está disponible.")
-      CallIncomingNotification.present(context, id, caller, media, name, expires.toLong())
-    }
-    Function("prepareIncomingCall") { id: String, caller: String, media: String, name: String, expires: Double ->
-      appContext.reactContext?.applicationContext?.let { context ->
-        CallIncomingNotification.prepare(id, caller, media, name, expires.toLong())
-        CallTonePlayer.initialize(context)
+    AsyncFunction("startCallMedia") Coroutine
+      { id: String, media: String ->
+        CallMediaSession.start(context(), id, media, owner)
       }
-    }
-    Function("dismissIncomingCall") { id: String ->
-      appContext.reactContext?.let { CallIncomingNotification.dismiss(it, id) }
-    }
-
-    Function("startCallTone") { key: String, callId: String, sound: String, expiresAt: Double ->
-      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return@Function
-      appContext.reactContext?.let {
-        CallTonePlayer.start(it.applicationContext, key, callId, sound, expiresAt.toLong())
+    Function("stopCallMedia") { id: String -> CallMediaSession.stop(id, owner) }
+    AsyncFunction("getAudioRoutes") {
+        val service = CallService.running
+        if (service?.call?.id?.let { service.owns(it, owner) } == true) CallAudioRoutes.routes()
+        else emptyList<Map<String, Any>>()
       }
-    }
-
-    Function("stopCallTone") { key: String ->
-      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return@Function
-      CallTonePlayer.stop(key)
-    }
-
-    AsyncFunction("stopCallToneBeforeMedia") {
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        CallTonePlayer.stopBeforeMedia()
+      .runOnQueue(Queues.MAIN)
+    AsyncFunction("setAudioRoute") { route: String ->
+        val service = CallService.running
+        check(service?.call?.id?.let { service.owns(it, owner) } == true) {
+          "Esta instancia no controla el audio de la llamada."
+        }
+        CallAudioRoutes.select(route)
       }
-      Unit
-    }.runOnQueue(Queues.MAIN)
-
+      .runOnQueue(Queues.MAIN)
     Function("getBuiltinOutputs") {
-      val context = appContext.reactContext ?: return@Function mapOf("earpiece" to false, "speaker" to false)
-      val manager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-      val outputs = manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+      val devices =
+        context()
+          .getSystemService(AudioManager::class.java)
+          .getDevices(AudioManager.GET_DEVICES_OUTPUTS)
       mapOf(
-        "earpiece" to outputs.any { it.type == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE },
-        "speaker" to outputs.any { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+        "speaker" to devices.any { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER },
+        "earpiece" to devices.any { it.type == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE },
       )
     }
-
     Function("setProximityEnabled") { enabled: Boolean ->
-      val context = appContext.reactContext ?: return@Function
-      val manager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-      if (enabled && manager.isWakeLockLevelSupported(PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK)) {
-        if (proximityLock == null) {
-          proximityLock = manager.newWakeLock(PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK, "Messinger:CallProximity")
-          proximityLock?.setReferenceCounted(false)
-        }
-        if (proximityLock?.isHeld != true) proximityLock?.acquire()
-      } else {
-        releaseProximity()
+      val context = context()
+      android.os.Handler(android.os.Looper.getMainLooper()).post {
+        val service = CallService.running
+        if (service?.call?.id?.let { service.owns(it, owner) } == true)
+          CallAudioRoutes.setProximity(context, enabled)
       }
+      Unit
     }
-
-    OnDestroy { releaseProximity() }
-  }
-
-  private fun releaseProximity() {
-    if (proximityLock?.isHeld == true) {
-      proximityLock?.release(PowerManager.RELEASE_FLAG_WAIT_FOR_NO_PROXIMITY)
+    Function("startCallTone") { key: String, id: String, sound: String, expires: Double ->
+      CallTonePlayer.start(context(), key, id, sound, expires.toLong())
     }
-    proximityLock = null
+    Function("stopCallTone") { key: String -> CallTonePlayer.stop(key) }
+    AsyncFunction("stopCallToneBeforeMedia") { CallTonePlayer.stopBeforeMedia() }
+      .runOnQueue(Queues.MAIN)
   }
 }

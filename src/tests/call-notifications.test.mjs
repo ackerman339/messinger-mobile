@@ -15,6 +15,9 @@ let post = async (notice) => {
   posted.push(notice);
   return notice.identifier;
 };
+const nativeClosed = new Set();
+const nativeIds = new Set();
+const nativeActions = [];
 const events = new Map();
 const calls = [];
 const native = {
@@ -25,7 +28,48 @@ const native = {
 };
 globalThis.__notificationTest = {
   native,
-  audio: { setProximityEnabled() {}, getBuiltinOutputs: () => ({ speaker: true, earpiece: true }) },
+  audio: {
+    getCallFlowVersion: () => 2,
+    setProximityEnabled() {},
+    getAudioRoutes: async () => [],
+    presentIncomingCall: async (callId, callerId, media, name, expires) => {
+      if (nativeClosed.has(callId)) return;
+      nativeIds.add(callId);
+      await post({
+        identifier: `messinger-call:${callId}`,
+        content: {
+          title: name,
+          sticky: true,
+          categoryIdentifier: 'messingerIncomingCall',
+          data: {
+            type: 'call-incoming',
+            callId,
+            callerId,
+            media,
+            expiresAt: new Date(expires).toISOString(),
+            localNotification: 'call',
+          },
+        },
+      });
+      if (nativeClosed.has(callId)) dismissed.push(`messinger-call:${callId}`);
+    },
+    dismissIncomingCall: (callId) => {
+      nativeClosed.add(callId);
+      dismissed.push(`messinger-call:${callId}`);
+    },
+    acceptIncomingCall: (callId) => {
+      nativeActions.push(['answer', callId]);
+      dismissed.push(`messinger-call:${callId}`);
+    },
+    finishCallPresentation: (callId) => {
+      nativeClosed.add(callId);
+      nativeActions.push(['end', callId]);
+    },
+    clearCalls: () => {
+      for (const id of nativeIds) nativeClosed.add(id);
+      nativeIds.clear();
+    },
+  },
   notifications: {
     DEFAULT_ACTION_IDENTIFIER: 'default',
     AndroidImportance: { HIGH: 6, MAX: 7 },
@@ -97,6 +141,9 @@ async function reset(t) {
   await flush();
   state.clearNotificationSession();
   state.setNotificationUser(user);
+  nativeClosed.clear();
+  nativeIds.clear();
+  nativeActions.length = 0;
   posted = [];
   dismissed = [];
   presented = [];
@@ -295,7 +342,7 @@ test('logout invalidates pending notification work before it can post for anothe
   await flush();
   assert.equal(posted.length, 0);
 });
-test('self-managed Telecom initializes in the background without consulting managed-account settings', async (t) => {
+test('the native call service initializes in the background without a Telecom account', async (t) => {
   await reset(t);
   native.AppState.currentState = 'background';
   const setup = [];
@@ -313,13 +360,12 @@ test('self-managed Telecom initializes in the background without consulting mana
   };
   const { nativeCallService } = await load('services/native-call-service');
   assert.equal(await nativeCallService.ensureReady(), true);
-  assert.equal(setup[0].android.selfManaged, true);
+  assert.equal(setup.length, 0);
   nativeCallService.clear();
 });
 
-test('Telecom UI events present the actionable alert, and server acceptance dismisses it exactly once', async (t) => {
+test('the service presents the incoming alert directly and accepts it exactly once', async (t) => {
   await reset(t);
-  const nativeActions = [];
   globalThis.__notificationTest.callKeep = {
     setup: async () => {},
     isConnectionServiceAvailable: async () => true,
@@ -345,9 +391,8 @@ test('Telecom UI events present the actionable alert, and server acceptance dism
   };
   service.sync(call);
   await flush();
-  assert.equal(posted.length, 0);
-  service.showIncomingUi(id);
-  service.showIncomingUi(id);
+  assert.equal(posted.length, 1);
+  service.sync(call);
   await flush();
   assert.equal(posted.length, 1);
   service.sync({ ...call, status: 'accepted', selected: true });

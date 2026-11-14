@@ -7,7 +7,7 @@ interface FullScreenCalls {
   openFullScreenCallSettings(): void;
 }
 let pending = false;
-const key = 'call-fullscreen-explained-v1';
+const key = 'call-fullscreen-explained-v2';
 export async function explainFullScreenCallPermission() {
   if (
     pending ||

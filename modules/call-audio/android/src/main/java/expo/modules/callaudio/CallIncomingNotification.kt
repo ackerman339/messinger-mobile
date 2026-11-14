@@ -6,124 +6,195 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.media.AudioAttributes
-import android.net.Uri
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import androidx.core.app.NotificationCompat
-import expo.modules.notifications.notifications.enums.NotificationPriority
+import expo.modules.notifications.notifications.model.NotificationAction
 import expo.modules.notifications.notifications.model.NotificationContent
 import expo.modules.notifications.notifications.model.NotificationRequest
-import expo.modules.notifications.notifications.model.NotificationAction
-import expo.modules.notifications.notifications.model.NotificationCategory
-import expo.modules.notifications.notifications.presentation.builders.ExpoNotificationBuilder
+import expo.modules.notifications.notifications.model.NotificationResponse
 import expo.modules.notifications.notifications.triggers.ChannelAwareTrigger
-import expo.modules.notifications.service.delegates.SharedPreferencesNotificationCategoriesStore
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import org.json.JSONObject
+import expo.modules.notifications.service.NotificationsService
 import java.time.Instant
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicInteger
-import android.util.Log
 
-/** Preserve Expo's existing accept/reject/body response intents, adding native ringing and full-screen UI. */
+internal data class CallInfo(
+  val id: String,
+  val caller: String,
+  val media: String,
+  val name: String,
+  val deadline: Long,
+  val incoming: Boolean = true,
+) {
+  fun intent(context: Context, action: String) =
+    Intent(context, CallService::class.java)
+      .setAction(action)
+      .putExtra("id", id)
+      .putExtra("caller", caller)
+      .putExtra("media", media)
+      .putExtra("name", name)
+      .putExtra("deadline", deadline)
+      .putExtra("incoming", incoming)
+
+  companion object {
+    fun from(intent: Intent) =
+      CallInfo(
+        intent.getStringExtra("id") ?: "",
+        intent.getStringExtra("caller") ?: "",
+        intent.getStringExtra("media") ?: "audio",
+        intent.getStringExtra("name") ?: "Contacto",
+        intent.getLongExtra("deadline", 0),
+        intent.getBooleanExtra("incoming", true),
+      )
+  }
+}
+
+/** Builds presentation only. CallService owns the ringtone, deadlines and user actions. */
 internal object CallIncomingNotification {
-  private val main = Handler(Looper.getMainLooper())
-  private data class Incoming(val caller: String, val media: String, val name: String, val deadline: Long)
-  private val prepared = ConcurrentHashMap<String, Incoming>()
-  private val revisions = ConcurrentHashMap<String, AtomicInteger>()
-  private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-  private const val CHANNEL = "messinger-incoming-calls-v3"
-  private val dismissed = linkedSetOf<String>()
-  private val silenced = linkedSetOf<String>()
-  private fun tag(id: String) = "messinger-call:$id"
-  private fun manager(context: Context) = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+  const val CHANNEL = "pulse-incoming-calls-v2"
+  private const val ONGOING_CHANNEL = "pulse-active-calls"
 
-  fun prepare(id: String, caller: String, media: String, name: String, deadline: Long) {
-    prepared[id] = Incoming(caller, media, name, deadline)
-    if (prepared.size > 64) prepared.keys.firstOrNull { it != id }?.let {
-      prepared.remove(it)
-      revisions.remove(it)
-    }
-  }
-  fun onTelecomUi(context: Context, id: String) = prepared[id]?.let { call ->
-    scope.launch {
-      try { present(context, id, call.caller, call.media, call.name, call.deadline) }
-      catch (error: Exception) { Log.w("MessingerIncomingCall", "Unable to present incoming call", error) }
-    }
+  fun channels(context: Context) {
+    val manager = context.getSystemService(NotificationManager::class.java)
+    manager.createNotificationChannel(
+      NotificationChannel(
+          CHANNEL,
+          "Llamadas entrantes",
+          NotificationManager.IMPORTANCE_HIGH,
+        )
+        .apply {
+          setSound(null, null)
+          enableVibration(true)
+          vibrationPattern = longArrayOf(0, 500, 300, 500)
+          lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+        }
+    )
+    manager.createNotificationChannel(
+      NotificationChannel(
+          ONGOING_CHANNEL,
+          "Llamadas en curso",
+          NotificationManager.IMPORTANCE_LOW,
+        )
+        .apply { setSound(null, null) }
+    )
   }
 
-  suspend fun present(context: Context, id: String, caller: String, media: String, name: String, deadline: Long) {
-    val revision = revisions.computeIfAbsent(id) { AtomicInteger() }.incrementAndGet()
-    prepare(id, caller, media, name, deadline)
-    val sound = Uri.parse("android.resource://${context.packageName}/raw/messinger_incoming_call")
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-      manager(context).createNotificationChannel(NotificationChannel(CHANNEL, "Llamadas entrantes", NotificationManager.IMPORTANCE_HIGH).apply {
-        setSound(sound, AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
-          .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
-        enableVibration(true)
-        lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-      })
-    }
-    val data = JSONObject().put("type", "call-incoming").put("callId", id).put("callerId", caller)
-      .put("media", media).put("expiresAt", Instant.ofEpochMilli(deadline).toString()).put("localNotification", "call")
-    val content = NotificationContent.Builder().setTitle(name)
-      .setText(if (media == "video") "Videollamada entrante" else "Llamada de voz entrante")
-      .setBody(data).setCategoryId("messingerIncomingCall").setSticky(true).setAutoDismiss(false)
-      .setSound(sound).setPriority(NotificationPriority.MAX).build()
-    val request = NotificationRequest(tag(id), content, ChannelAwareTrigger(CHANNEL))
-    val model = expo.modules.notifications.notifications.model.Notification(request)
-    val categories = SharedPreferencesNotificationCategoriesStore(context)
-    if (categories.getNotificationCategory("messingerIncomingCall") == null) {
-      categories.saveNotificationCategory(NotificationCategory("messingerIncomingCall", listOf(
-        NotificationAction("reject", "Rechazar", false), NotificationAction("accept", "Aceptar", true))))
-    }
-    val base = ExpoNotificationBuilder(context, model, categories).build()
-    withContext(Dispatchers.Main) {
-      if (dismissed.contains(id) || revisions[id]?.get() != revision || deadline <= System.currentTimeMillis()) return@withContext
-      val builder = Notification.Builder.recoverBuilder(context, base).setCategory(Notification.CATEGORY_CALL)
-        // ONLY_ALERT_ONCE stops an existing insistent ringtone when caller details are updated.
-        .setVisibility(Notification.VISIBILITY_PUBLIC).setOnlyAlertOnce(silenced.contains(id))
-        .setTimeoutAfter(deadline - System.currentTimeMillis())
-      val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-      if (intent != null && (Build.VERSION.SDK_INT < 34 || manager(context).canUseFullScreenIntent())) {
-        intent.action = Intent.ACTION_VIEW
-        intent.data = Uri.parse("messingermobile://chat?incomingCall=$id")
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        builder.setFullScreenIntent(PendingIntent.getActivity(context, id.hashCode(), intent,
-          PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE), true)
-      }
-      var notice = builder.build()
-      if (!silenced.contains(id)) notice.flags = notice.flags or Notification.FLAG_INSISTENT
-      else notice = NotificationCompat.Builder(context, notice).setSilent(true).build()
-      CallWindowState.incoming(id, deadline)
-      manager(context).notify(tag(id), 0, notice)
-    }
+  private fun response(context: Context, call: CallInfo, action: String): PendingIntent {
+    val content =
+      NotificationContent.Builder()
+        .setTitle(call.name)
+        .setText(if (call.media == "video") "Videollamada entrante" else "Llamada entrante")
+        .setBody(
+          org.json
+            .JSONObject()
+            .put("type", "call-incoming")
+            .put("callId", call.id)
+            .put("callerId", call.caller)
+            .put("media", call.media)
+            .put("expiresAt", Instant.ofEpochMilli(call.deadline).toString())
+            .put("localNotification", "call")
+            .put("nativeCallService", true)
+        )
+        .build()
+    val model =
+      expo.modules.notifications.notifications.model.Notification(
+        NotificationRequest("messinger-call:" + call.id, content, ChannelAwareTrigger(CHANNEL))
+      )
+    val forward =
+      NotificationsService.createNotificationResponseIntent(
+        context,
+        model,
+        NotificationAction(action, action, action != "reject"),
+      )
+    val intent =
+      if (action == "reject") Intent(context, CallActionReceiver::class.java)
+      else Intent(context, CallActionActivity::class.java)
+    intent.action = "pulse.call." + action
+    intent.data = android.net.Uri.parse("pulse-call://action/" + call.id + "/" + action)
+    intent
+      .putExtra("id", call.id)
+      .putExtra("action", action)
+      .putExtra("forward", forward)
+      .putExtra("deadline", call.deadline)
+    val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    return if (action == "reject")
+      PendingIntent.getBroadcast(context, call.id.hashCode(), intent, flags)
+    else PendingIntent.getActivity(context, call.id.hashCode(), intent, flags)
   }
-  fun dismiss(context: Context, id: String) {
-    if (Looper.myLooper() != Looper.getMainLooper()) {
-      main.post { dismiss(context, id) }
-      return
+
+  fun incoming(
+    context: Context,
+    call: CallInfo,
+    fullScreen: Boolean,
+    silenced: Boolean,
+  ): Notification {
+    channels(context)
+    val answer = response(context, call, "accept")
+    val reject = response(context, call, "reject")
+    val builder =
+      NotificationCompat.Builder(context, CHANNEL)
+        .setSmallIcon(android.R.drawable.sym_call_incoming)
+        .setContentTitle(call.name)
+        .setContentText(
+          if (call.media == "video") "Videollamada entrante" else "Llamada de voz entrante"
+        )
+        .setCategory(NotificationCompat.CATEGORY_CALL)
+        .setPriority(NotificationCompat.PRIORITY_MAX)
+        .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+        .setOngoing(true)
+        .setAutoCancel(false)
+        .setOnlyAlertOnce(true)
+        .setContentIntent(response(context, call, NotificationResponse.DEFAULT_ACTION_IDENTIFIER))
+        .addAction(0, "Rechazar", reject)
+        .addAction(0, "Aceptar", answer)
+        .setTimeoutAfter((call.deadline - System.currentTimeMillis()).coerceAtLeast(1))
+    val manager = context.getSystemService(NotificationManager::class.java)
+    if (
+      fullScreen && !silenced && (Build.VERSION.SDK_INT < 34 || manager.canUseFullScreenIntent())
+    ) {
+      val panel =
+        Intent(context, CallIncomingActivity::class.java)
+          .putExtra("id", call.id)
+          .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+      builder.setFullScreenIntent(
+        PendingIntent.getActivity(
+          context,
+          call.id.hashCode(),
+          panel,
+          PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        ),
+        true,
+      )
     }
-    dismissed.add(id)
-    prepared.remove(id)
-    revisions.remove(id)
-    if (dismissed.size > 256) dismissed.remove(dismissed.first())
-    manager(context).cancel(tag(id), 0)
+    if (silenced) builder.setSilent(true)
+    return builder.build()
   }
-  fun silence(context: Context, id: String) {
-    silenced.add(id)
-    if (silenced.size > 256) silenced.remove(silenced.first())
-    val current = manager(context).activeNotifications.firstOrNull { it.tag == tag(id) } ?: return
-    manager(context).cancel(tag(id), 0)
-    val notice = NotificationCompat.Builder(context, current.notification).setSilent(true)
-      .setOnlyAlertOnce(true).setFullScreenIntent(null, false).build()
-    notice.flags = notice.flags and Notification.FLAG_INSISTENT.inv()
-    manager(context).notify(tag(id), 0, notice)
+
+  fun ongoing(context: Context, call: CallInfo): Notification {
+    channels(context)
+    val open =
+      (context.packageManager.getLaunchIntentForPackage(context.packageName)
+          ?: Intent(Intent.ACTION_VIEW).setPackage(context.packageName))
+        .apply {
+          addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+    return NotificationCompat.Builder(context, ONGOING_CHANNEL)
+      .setSmallIcon(android.R.drawable.sym_call_incoming)
+      .setContentTitle(call.name)
+      .setContentText("Llamada de pulse en curso")
+      .setCategory(NotificationCompat.CATEGORY_CALL)
+      .setOngoing(true)
+      .setSilent(true)
+      .setContentIntent(
+        PendingIntent.getActivity(
+          context,
+          7402,
+          open,
+          PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+      )
+      .build()
   }
+
+  fun answer(context: Context, call: CallInfo) = response(context, call, "accept").send()
+
+  fun reject(context: Context, call: CallInfo) = response(context, call, "reject").send()
 }

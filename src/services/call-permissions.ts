@@ -2,7 +2,7 @@ import { AppState, PermissionsAndroid, Platform } from 'react-native';
 import type { Permission } from 'react-native';
 import type { CallMedia } from '../types/call';
 
-/** Telecom opens the app asynchronously when answering from the lock screen. */
+/** Notification acceptance opens the app asynchronously from the lock screen. */
 async function waitForForeground() {
   if (AppState.currentState === 'active') return;
   await new Promise<void>((resolve, reject) => {
@@ -25,8 +25,9 @@ async function waitForForeground() {
   });
 }
 
-export async function requestCallPermissions(media: CallMedia) {
+export async function requestCallPermissions(media: CallMedia, foreground = false) {
   if (Platform.OS !== 'android') throw new Error('Las llamadas están habilitadas en Android.');
+  if (foreground) await waitForForeground();
   const permissions = [
     PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
     ...(media === 'video' ? [PermissionsAndroid.PERMISSIONS.CAMERA] : []),

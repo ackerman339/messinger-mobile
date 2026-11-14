@@ -1,3 +1,3 @@
-// Register the background task and native call events before the Router mounts.
+// Define push handlers before the Router mounts, including Android headless starts.
 import './src/tasks/call-notifications';
 import 'expo-router/entry';

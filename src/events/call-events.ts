@@ -98,6 +98,7 @@ export function createCallEventHandlers(
   function handleReject(data: CallServerPayloads['CALL_REJECT']) {
     const session = store.match(data.callId);
     if (session) {
+      store.publish(session, { remoteEnded: true });
       lifecycle.finish(session, data.status);
     }
   }
@@ -105,6 +106,7 @@ export function createCallEventHandlers(
   function handleEnd(data: CallServerPayloads['CALL_END']) {
     const session = store.match(data.callId);
     if (session) {
+      store.publish(session, { remoteEnded: true });
       lifecycle.finish(
         session,
         data.status ?? (data.reason === 'NO_ANSWER' ? 'missed' : 'ended'),
@@ -150,6 +152,7 @@ export function createCallEventHandlers(
       media: call.media,
     });
     if (call.isTerminal || isTerminal(call.status)) {
+      store.publish(session, { remoteEnded: true });
       lifecycle.finish(session, call.status);
       return;
     }

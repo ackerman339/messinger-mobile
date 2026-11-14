@@ -1,29 +1,20 @@
 import { requireOptionalNativeModule } from 'expo';
 import { Platform } from 'react-native';
-
 interface NativeIncomingCall {
-  prepareIncomingCall?(
-    callId: string,
-    callerId: string,
-    media: string,
-    name: string,
-    expiresAt: number,
-  ): void;
+  getCallFlowVersion(): number;
   presentIncomingCall(
-    callId: string,
-    callerId: string,
+    id: string,
+    caller: string,
     media: string,
     name: string,
-    expiresAt: number,
+    expires: number,
   ): Promise<void>;
-  dismissIncomingCall(callId: string): void;
+  dismissIncomingCall(id: string): void;
+  clearCalls?(): void;
 }
 export function getNativeIncomingCall(): NativeIncomingCall | undefined {
   if (Platform.OS !== 'android') return;
-  const audio = requireOptionalNativeModule<NativeIncomingCall>('MessingerCallAudio');
-  if (
-    typeof audio?.presentIncomingCall === 'function' &&
-    typeof audio.dismissIncomingCall === 'function'
-  )
-    return audio;
+  const native = requireOptionalNativeModule<NativeIncomingCall>('MessingerCallAudio');
+  if (native?.getCallFlowVersion?.() === 2 && typeof native.presentIncomingCall === 'function')
+    return native;
 }

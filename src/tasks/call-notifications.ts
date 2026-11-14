@@ -2,7 +2,7 @@ import type { NotificationTaskPayload } from 'expo-notifications';
 import * as Notifications from 'expo-notifications';
 import * as TaskManager from 'expo-task-manager';
 
-import { AppRegistry, AppState, Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { isExpiredCallPush, parseCallPush } from '../services/call-push';
 import { configureNotificationChannels } from '../services/notification-channels';
 import { parseMessageNotification, readNotificationData } from '../services/notification-data';
@@ -16,30 +16,12 @@ import {
   dismissIncomingCallNotification,
 } from '../services/call-notification-service';
 
-import {
-  bindNativeCallEvents,
-  callClient,
-  receiveCallPush,
-  respondToCall,
-} from '../services/call-runtime';
+import { callClient, receiveCallPush, respondToCall } from '../services/call-runtime';
 
-const taskName = 'messinger-call-notifications';
+const taskName = 'pulse-call-notifications-v2';
+const legacyTaskName = 'messinger-call-notifications';
 
 installNotificationPresentation();
-bindNativeCallEvents();
-if (Platform.OS === 'android')
-  AppRegistry.registerHeadlessTask(
-    'RNCallKeepBackgroundMessage',
-    () => async (event: { callUUID?: string; handle?: string }) => {
-      if (!event.callUUID) return;
-      await receiveCallPush({
-        type: 'call-incoming',
-        callId: event.callUUID.toLowerCase(),
-        callerId: event.handle ?? '',
-        media: 'audio',
-      });
-    },
-  );
 
 /** A body tap accepts, explicit buttons accept/reject; unrelated actions never accept. */
 export async function handleCallNotificationResponse(
@@ -92,9 +74,14 @@ async function waitForRejection(callId: string) {
   });
 }
 
-TaskManager.defineTask<NotificationTaskPayload>(taskName, async ({ data, error }) => {
+const runNotificationTask: Parameters<
+  typeof TaskManager.defineTask<NotificationTaskPayload>
+>[1] = async ({ data, error }) => {
   if (error || !data || typeof data !== 'object' || Platform.OS !== 'android') return;
   if ('actionIdentifier' in data) {
+    // Accept/body taps launch the app. Only its foreground runtime may claim the WebRTC call.
+    // Keep the stored response for getLastNotificationResponseAsync during a cold launch.
+    if (data.actionIdentifier !== 'reject') return;
     if (await handleCallNotificationResponse(data)) {
       if (data.actionIdentifier === 'reject') {
         const call = parseCallPush(data);
@@ -115,11 +102,17 @@ TaskManager.defineTask<NotificationTaskPayload>(taskName, async ({ data, error }
     const message = parseMessageNotification(data);
     if (message) claimMessageNotification(message.messageId, 'remote');
   }
-});
+};
+TaskManager.defineTask<NotificationTaskPayload>(taskName, runNotificationTask);
+// An upgrade can receive a push before the first foreground launch migrates its registration.
+TaskManager.defineTask<NotificationTaskPayload>(legacyTaskName, runNotificationTask);
 
 export async function registerCallNotificationTask() {
   await configureNotificationChannels();
   await cleanupIncomingCallNotifications().catch(() => {});
+  if (Platform.OS === 'android' && (await TaskManager.isTaskRegisteredAsync(legacyTaskName))) {
+    await Notifications.unregisterTaskAsync(legacyTaskName);
+  }
   if (Platform.OS === 'android' && !(await TaskManager.isTaskRegisteredAsync(taskName))) {
     await Notifications.registerTaskAsync(taskName);
   }

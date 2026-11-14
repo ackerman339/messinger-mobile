@@ -59,7 +59,7 @@ export function createPeerSession() {
     const iceServers = await getIceServers();
     if (!active()) throw new Error('Sesión finalizada');
     mediaCallId = callbacks.callId;
-    await startCallMedia(callbacks.callId);
+    await startCallMedia(callbacks.callId, media);
     if (!active()) {
       stopCallMedia(callbacks.callId);
       throw new Error('Sesión finalizada');

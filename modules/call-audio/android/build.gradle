@@ -24,8 +24,6 @@ android {
 }
 
 dependencies {
-  implementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.1.0'
-  implementation project(':react-native-callkeep')
   implementation project(':expo-notifications')
   testImplementation 'junit:junit:4.13.2'
   testImplementation 'org.robolectric:robolectric:4.17'

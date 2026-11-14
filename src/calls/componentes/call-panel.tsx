@@ -6,10 +6,12 @@ import { COLORS } from '../../lib/constants';
 import { CallControls } from './call-controls';
 import { CallStream } from './call-stream';
 import { getVideoStreamKey } from '../../rtc/video-stream';
+import { useCallPanelVisibility } from '../../hooks/use-call-panel-visibility';
 
 export function CallPanel() {
   const model = useCallPanel();
   const { call, terminal } = model;
+  useCallPanelVisibility(call?.callId);
   const insets = useSafeAreaInsets();
   if (!call) return null;
   const video = call.media === 'video' && !!getVideoStreamKey(call.remote) && !terminal;

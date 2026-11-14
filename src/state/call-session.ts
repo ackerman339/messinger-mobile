@@ -31,6 +31,7 @@ export interface CallView {
   deviceError?: string;
   error?: string;
   notice?: string;
+  remoteEnded?: boolean;
 }
 
 export interface CallSession {
