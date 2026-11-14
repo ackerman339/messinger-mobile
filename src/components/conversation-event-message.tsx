@@ -89,7 +89,7 @@ export function ConversationEventMessage({
           </YStack>
         </XStack>
         <Text self='flex-end' mt='$1' color='$textSecondary' fontSize={11}>
-          {format(new Date(message.createdAt), 'HH:mm hh:mm a')}
+          {format(new Date(message.createdAt), 'dd MMM hh:mm a')}
         </Text>
       </YStack>
     </XStack>
