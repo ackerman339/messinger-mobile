@@ -1,6 +1,8 @@
 import * as Clipboard from 'expo-clipboard';
-import { Copy, LogOut, Menu, MessageCircle } from 'lucide-react-native';
+import { Bell, Copy, LogOut, Menu, MessageCircle } from 'lucide-react-native';
 import { useState, type ReactNode } from 'react';
+import { Platform } from 'react-native';
+import { explainFullScreenCallPermission } from '@/src/services/call-fullscreen-permission';
 import { Button, Popover, Separator, Text, YStack } from 'tamagui';
 
 import { useUserContext } from '@/src/contexts/user-context';
@@ -71,6 +73,17 @@ export function ChatMenu() {
               label='Copiar tu código de usuario'
               onPress={handleCopyUserCode}
             />
+
+            {Platform.OS === 'android' && (
+              <MenuItem
+                icon={<Bell size={18} color={COLORS['text-primary']} />}
+                label='Permisos de llamadas'
+                onPress={() => {
+                  setMenuOpen(false);
+                  void explainFullScreenCallPermission(true).catch(() => {});
+                }}
+              />
+            )}
 
             <Separator my='$1' bg='$border' />
 

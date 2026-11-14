@@ -88,6 +88,7 @@ internal object CallIncomingNotification {
             .put("type", "call-incoming")
             .put("callId", call.id)
             .put("callerId", call.caller)
+            .put("callerName", call.name)
             .put("media", call.media)
             .put("expiresAt", Instant.ofEpochMilli(call.deadline).toString())
             .put("localNotification", "call")

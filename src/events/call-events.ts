@@ -46,11 +46,15 @@ export function createCallEventHandlers(
     }
     const current = store.getSession();
     if (current && !current.closed) {
+      // Push may have created this session before the socket delivered caller metadata.
+      if (current.view.callId === data.callId && current.view.incoming && data.callerName?.trim())
+        store.publish(current, { participantName: data.callerName.trim().slice(0, 100) });
       return;
     }
     const session = createCallSession({
       callId: data.callId,
       participantId: data.callerId,
+      participantName: data.callerName?.trim().slice(0, 100) || undefined,
       incoming: true,
       media: data.media,
       status: 'ringing',
@@ -106,6 +110,8 @@ export function createCallEventHandlers(
   function handleEnd(data: CallServerPayloads['CALL_END']) {
     const session = store.match(data.callId);
     if (session) {
+      if (session.view.incoming && data.callerName?.trim())
+        store.publish(session, { participantName: data.callerName.trim().slice(0, 100) });
       store.publish(session, { remoteEnded: true });
       lifecycle.finish(
         session,

@@ -39,6 +39,29 @@ class CallAudioModule : Module() {
     }
     OnDestroy { CallAudioRoutes.observers.remove(owner) }
 
+    Function("hasManufacturerCallSettings") {
+      Build.MANUFACTURER.lowercase() in listOf("xiaomi", "redmi", "poco")
+    }
+    Function("openManufacturerCallSettings") {
+      val context = context()
+      val candidates = listOf(
+        Intent("miui.intent.action.APP_PERM_EDITOR")
+          .setClassName("com.miui.securitycenter", "com.miui.permcenter.permissions.PermissionsEditorActivity")
+          .putExtra("extra_pkgname", context.packageName),
+        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + context.packageName)),
+      )
+      var opened = false
+      for (intent in candidates) {
+        try {
+          context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+          opened = true
+          break
+        } catch (_: android.content.ActivityNotFoundException) {
+        } catch (_: SecurityException) {
+        }
+      }
+      check(opened) { "Abre Ajustes > Aplicaciones > pulse > Otros permisos." }
+    }
     Function("canUseFullScreenCalls") {
       Build.VERSION.SDK_INT < 34 ||
         context()
@@ -88,6 +111,7 @@ class CallAudioModule : Module() {
             "callerId" to it.caller,
             "media" to it.media,
             "name" to it.name,
+            "callerName" to it.name,
             "expiresAt" to Instant.ofEpochMilli(it.deadline).toString(),
           )
         }

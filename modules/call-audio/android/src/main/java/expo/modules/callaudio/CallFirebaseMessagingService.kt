@@ -30,7 +30,7 @@ class CallFirebaseMessagingService : ExpoFirebaseMessagingService() {
       if (type == "call-missed") CallService.finish(id, "push", true)
       else if (deadline != null && deadline > System.currentTimeMillis()) {
         val data = CallInfo(id, payload.optString("callerId"),
-          if (payload.optString("media") == "video") "video" else "audio", "Contacto", deadline)
+          if (payload.optString("media") == "video") "video" else "audio", payload.optString("callerName").trim().take(100).ifBlank { "Usuario desconocido" }, deadline)
         Handler(Looper.getMainLooper()).post {
           if (CallPushSession.user(this) == user) {
             try {

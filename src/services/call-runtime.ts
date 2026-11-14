@@ -113,9 +113,14 @@ export async function receiveCallPush(push: CallPush) {
   if (!(await tokenStorage.getAccessToken()) || version !== authVersion) return;
   if (hasActiveCall() && callClient.getSnapshot()?.callId !== push.callId) return;
   if (!(await nativeCallService.ensureReady()) || version !== authVersion) return;
+  // A lock-screen activity launch contains only callId; retain the caller name already shown natively.
+  const nativeIncoming = nativeCallService.getIncoming();
+  if (!push.callerName && nativeIncoming?.callId === push.callId && nativeIncoming.callerName)
+    push = { ...push, callerName: nativeIncoming.callerName };
   startCallRuntime();
   callClient.inspectFromNotification(push.callId, {
     participantId: push.callerId,
+    ...(push.callerName ? { participantName: push.callerName } : {}),
     media: push.media,
     expiresAt: push.expiresAt,
   });
@@ -131,7 +136,7 @@ export async function receiveCallPush(push: CallPush) {
     push.callId,
     push.callerId,
     push.media,
-    'Contacto',
+    push.callerName || current.participantName || 'Usuario desconocido',
     push.expiresAt,
   );
   try {

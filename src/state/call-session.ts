@@ -13,6 +13,7 @@ import { createPeerSession } from '../rtc/peer-session';
 export interface CallView {
   callId?: string;
   participantId: string;
+  participantName?: string;
   media: CallMedia;
   incoming: boolean;
   answering?: boolean;
@@ -37,6 +38,7 @@ export interface CallView {
 export interface CallSession {
   view: CallView;
   requestId?: string;
+  callerName?: string;
   notificationAction?: 'accept' | 'reject';
   notificationResponseSent?: boolean;
   notificationResponseDeadline?: number;

@@ -181,7 +181,7 @@ export function ConversationList() {
         />
       )}
       <Text color='red' fontSize='$1'>
-        APK version 1.2.0
+        APK version 1.3.0
       </Text>
     </YStack>
   );

@@ -8,7 +8,7 @@ import { releaseChatRecorderForCall } from './call-audio-ownership';
 import { requestCallPermissions } from './call-permissions';
 import { startCallMedia } from './native-call-media';
 export function createCallLifecycle(store: CallStore) {
-  function start(participantId: string, media: CallMedia) {
+  function start(participantId: string, media: CallMedia, callerName?: string) {
     const current = store.getSession();
     if (current && !current.closed) {
       return;
@@ -27,13 +27,19 @@ export function createCallLifecycle(store: CallStore) {
     );
     store.setSession(session);
     store.publish(session);
-    wsClient.emit('CALL_INIT', { requestId: session.requestId!, calleeId: participantId, media });
+    session.callerName = callerName?.trim().slice(0, 100) || undefined;
+    wsClient.emit('CALL_INIT', {
+      requestId: session.requestId!,
+      calleeId: participantId,
+      media,
+      callerName: session.callerName,
+    });
   }
 
   function respondFromNotification(
     callId: string,
     action?: 'accept' | 'reject',
-    incoming?: Partial<Pick<CallView, 'participantId' | 'media' | 'expiresAt'>>,
+    incoming?: Partial<Pick<CallView, 'participantId' | 'participantName' | 'media' | 'expiresAt'>>,
   ) {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(callId)) return;
     if (store.terminalIds.has(callId)) return;
@@ -83,7 +89,7 @@ export function createCallLifecycle(store: CallStore) {
 
   function inspectFromNotification(
     callId: string,
-    incoming?: Pick<CallView, 'participantId' | 'media' | 'expiresAt'>,
+    incoming?: Pick<CallView, 'participantId' | 'participantName' | 'media' | 'expiresAt'>,
   ) {
     respondFromNotification(callId, undefined, incoming);
   }
@@ -252,6 +258,7 @@ export function createCallLifecycle(store: CallStore) {
           requestId: session.requestId,
           calleeId: session.view.participantId,
           media: session.view.media,
+          callerName: session.callerName,
         });
       } else sync(session);
     }

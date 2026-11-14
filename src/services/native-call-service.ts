@@ -158,7 +158,13 @@ function sync(call: CallView | null) {
     return;
   }
   if (call.incoming && call.status === 'ringing' && !call.answering)
-    displayIncoming(id, call.participantId, call.media, names.get(id), call.expiresAt ?? undefined);
+    displayIncoming(
+      id,
+      call.participantId,
+      call.media,
+      call.participantName || names.get(id),
+      call.expiresAt ?? undefined,
+    );
   if (!call.incoming && !outgoing.has(id)) {
     outgoing.add(id);
     void audio()

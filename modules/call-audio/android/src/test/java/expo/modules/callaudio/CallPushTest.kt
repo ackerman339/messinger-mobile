@@ -30,7 +30,7 @@ class CallPushTest {
       shadowOf(power).setIsInteractive(screenOn)
       val payload = JSONObject().put("type", "call-incoming")
         .put("callId", UUID.randomUUID().toString()).put("callerId", "caller")
-        .put("recipientId", "other").put("media", media)
+        .put("recipientId", "other").put("media", media).put("callerName", "María Pérez")
         .put("expiresAt", Instant.now().plusSeconds(30).toString())
       fun deliver() = receiver.onMessageReceived(RemoteMessage.Builder("test")
         .addData("body", payload.toString()).build())
@@ -45,6 +45,7 @@ class CallPushTest {
       assertNotNull(intent)
       assertEquals(!screenOn, intent.getBooleanExtra("screenOff", screenOn))
       assertEquals(media, intent.getStringExtra("media"))
+      assertEquals("María Pérez", intent.getStringExtra("name"))
     }
     receiver.onDestroy()
   }

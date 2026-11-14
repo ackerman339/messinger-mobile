@@ -6,7 +6,6 @@ import { useUserContext } from '../contexts/user-context';
 import { useCallScreenAwake } from '../hooks/use-call-screen-awake';
 import { hasNativeCalling } from '../rtc/native-webrtc';
 import { releaseChatRecorderForCall } from '../services/call-audio-ownership';
-import { explainFullScreenCallPermission } from '../services/call-fullscreen-permission';
 import { requestCallPermissions } from '../services/call-permissions';
 import {
   callClient,
@@ -66,7 +65,6 @@ export function CallProvider({ children }: { children: ReactNode }) {
       nativeCallService.sync(callClient.getSnapshot());
       const incoming = nativeCallService.getIncoming();
       if (incoming) void receiveCallPush(incoming).catch(() => {});
-      void explainFullScreenCallPermission().catch(() => {});
     });
     const notifications = subscribeCallNotifications();
     const subscription = AppState.addEventListener('change', (state) => {
@@ -102,7 +100,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       if (getCallUser() !== userId) return;
       await nativeCallService.beginOutgoing(participantId, media);
       if (getCallUser() !== userId) return;
-      callClient.start(participantId, media);
+      callClient.start(participantId, media, user?.username);
     } catch (error) {
       Alert.alert(
         'No se pudo iniciar la llamada',

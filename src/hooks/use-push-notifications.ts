@@ -2,6 +2,7 @@ import * as Notifications from 'expo-notifications';
 import { useEffect } from 'react';
 import { AppState, Platform } from 'react-native';
 
+import { explainFullScreenCallPermission } from '@/src/services/call-fullscreen-permission';
 import { registerCallNotificationTask } from '@/src/tasks/call-notifications';
 import {
   registerPushNotifications,
@@ -22,6 +23,7 @@ export function usePushNotifications(user: User | null) {
     let failures = 0;
     let retry: ReturnType<typeof setTimeout> | undefined;
     let callTaskReady = false;
+    let permissionRequested = false;
 
     // Local call UI/task setup must never gate acquisition or backend registration of a push token.
     async function prepareCallNotifications() {
@@ -38,7 +40,17 @@ export function usePushNotifications(user: User | null) {
       registering = true;
       clearTimeout(retry);
       try {
-        const result = await registerPushNotifications(userId!, { requestPermission, force });
+        const shouldRequest =
+          requestPermission && !permissionRequested && AppState.currentState === 'active';
+        if (shouldRequest) permissionRequested = true;
+        const result = await registerPushNotifications(userId!, {
+          requestPermission: shouldRequest,
+          force,
+        });
+        if (!active) return;
+        // Request permission only in foreground; the settings guidance follows the OS dialog.
+        if (Platform.OS === 'android' && AppState.currentState === 'active')
+          await explainFullScreenCallPermission();
         if (!active) return;
         if (result.status === 'registered') failures = 0;
         else if (
@@ -55,12 +67,12 @@ export function usePushNotifications(user: User | null) {
         registering = false;
       }
     }
-    void register(true);
+    if (AppState.currentState === 'active') void register(true);
     void prepareCallNotifications();
     const state = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
         failures = 0;
-        void register(false, true);
+        void register(true, true);
         void prepareCallNotifications();
       } else clearTimeout(retry);
     });

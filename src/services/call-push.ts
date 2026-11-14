@@ -2,6 +2,7 @@ export interface CallPush {
   type: 'call-incoming' | 'call-missed';
   callId: string;
   callerId: string;
+  callerName?: string;
   media: 'audio' | 'video';
   expiresAt?: string;
 }
@@ -31,6 +32,9 @@ export function parseCallPush(payload: unknown, depth = 0): CallPush | undefined
       type: value.type,
       callId: value.callId.toLowerCase(),
       callerId: typeof value.callerId === 'string' ? value.callerId : '',
+      ...(typeof value.callerName === 'string' && value.callerName.trim()
+        ? { callerName: value.callerName.trim().slice(0, 100) }
+        : {}),
       media: value.media === 'video' ? 'video' : 'audio',
       expiresAt: typeof value.expiresAt === 'string' ? value.expiresAt : undefined,
     };

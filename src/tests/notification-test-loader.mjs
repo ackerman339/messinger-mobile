@@ -21,6 +21,14 @@ export function createNotificationLoader(stubs = {}) {
     }).outputText;
     source = source
       .replace(
+        /import \{ randomUUID \} from 'expo-crypto';/g,
+        "import { randomUUID } from 'node:crypto';",
+      )
+      .replace(
+        /import \* as SecureStore from 'expo-secure-store';/g,
+        'const SecureStore = globalThis.__notificationTest.secureStore;',
+      )
+      .replace(
         /import \{ useEffect \} from 'react';/g,
         'const { useEffect } = globalThis.__notificationTest.react;',
       )
