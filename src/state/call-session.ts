@@ -11,6 +11,7 @@ import type {
 import { createPeerSession } from '../rtc/peer-session';
 
 export interface CallView {
+  conversationId?: string;
   callId?: string;
   participantId: string;
   participantName?: string;
@@ -61,7 +62,10 @@ export interface CallSession {
   queue: Promise<void>;
 }
 
-export function createCallSession(view: CallView, requestId?: string): CallSession {
+export function createCallSession(
+  view: CallView,
+  requestId?: string,
+): CallSession {
   return {
     view,
     requestId,

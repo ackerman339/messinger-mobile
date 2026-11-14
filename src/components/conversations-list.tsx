@@ -1,6 +1,12 @@
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { ActivityIndicator, FlatList, type ListRenderItem } from 'react-native';
 import { Avatar, Button, Input, Text, XStack, YStack } from 'tamagui';
 
@@ -12,7 +18,11 @@ import { WS_SERVER_EVENTS } from '@/src/types/websocket';
 
 import { ChatMenu } from './chat-menu';
 
-import type { Conversation } from '@/src/types/conversation';
+import type {
+  Conversation,
+  Message,
+  CallConversationEvent,
+} from '@/src/types/conversation';
 
 export function ConversationList() {
   const {
@@ -187,13 +197,28 @@ export function ConversationList() {
   );
 }
 
+function getLastMessageContent(
+  message?: Pick<Message, 'type' | 'metadata'> & { content?: string },
+) {
+  if (message?.type === 'CALL_ACCEPTED' || message?.type === 'CALL_END') {
+    return message.metadata?.media === 'video'
+      ? 'Videollamada'
+      : 'Llamada de voz';
+  }
+  return message?.content ?? '';
+}
+
 type ConversationRowProps = {
   conversation: Conversation;
   isActive: boolean;
   onSelect: () => void;
 };
 
-function ConversationRow({ conversation, isActive, onSelect }: ConversationRowProps) {
+function ConversationRow({
+  conversation,
+  isActive,
+  onSelect,
+}: ConversationRowProps) {
   const { user } = useUserContext();
   const { activeConversation } = useChatContext();
 
@@ -201,7 +226,9 @@ function ConversationRow({ conversation, isActive, onSelect }: ConversationRowPr
     (member) => member.userId !== user?.id,
   );
 
-  const privateConversationUser = conversation.members.find((member) => member.userId === user?.id);
+  const privateConversationUser = conversation.members.find(
+    (member) => member.userId === user?.id,
+  );
 
   const title =
     conversation.type === 'GROUP'
@@ -215,43 +242,66 @@ function ConversationRow({ conversation, isActive, onSelect }: ConversationRowPr
   );
 
   const [lastMessageContent, setLastMessageContent] = useState(
-    conversation.lastMessage?.content ?? '',
+    getLastMessageContent(conversation.lastMessage),
   );
 
   /**
    * Listen for incoming messages.
    */
   useLayoutEffect(() => {
-    const unsubscribeNewMessage = wsClient.on(WS_SERVER_EVENTS.NEW_MESSAGE, async (message) => {
-      if (message.conversation.id !== conversation.id) {
-        return;
-      }
+    const unsubscribeNewMessage = wsClient.on(
+      WS_SERVER_EVENTS.NEW_MESSAGE,
+      async (message) => {
+        if (message.conversation.id !== conversation.id) {
+          return;
+        }
 
-      if (!activeConversation || activeConversation.id !== conversation.id) {
-        setUnreadMessageCount((previous) => previous + 1);
-      }
+        if (!activeConversation || activeConversation.id !== conversation.id) {
+          setUnreadMessageCount((previous) => previous + 1);
+        }
 
-      setLastMessageContent(message.content);
+        setLastMessageContent(getLastMessageContent(message));
 
-      if (activeConversation) {
-        await conversationService.resetUnreadMessagesCount({
-          conversationId: activeConversation.id,
-        });
-      }
-    });
+        if (activeConversation) {
+          await conversationService.resetUnreadMessagesCount({
+            conversationId: activeConversation.id,
+          });
+        }
+      },
+    );
 
     /**
      * Listen for messages sent by the current user.
      */
-    const unsubscribeMessageSent = wsClient.on(WS_SERVER_EVENTS.MESSAGE_SENT, (message) => {
-      if (message.conversation.id === conversation.id) {
-        setLastMessageContent(message.content);
-      }
-    });
+    const unsubscribeMessageSent = wsClient.on(
+      WS_SERVER_EVENTS.MESSAGE_SENT,
+      (message) => {
+        if (message.conversation.id === conversation.id) {
+          setLastMessageContent(getLastMessageContent(message));
+        }
+      },
+    );
+
+    function handleCallEvent({
+      conversationEvent,
+    }: {
+      conversationEvent?: CallConversationEvent;
+    }) {
+      if (
+        !conversationEvent ||
+        conversationEvent.conversationId !== conversation.id
+      )
+        return;
+      setLastMessageContent(getLastMessageContent(conversationEvent));
+    }
+    const unsubscribeCallEnd = wsClient.on('CALL_END', handleCallEvent);
+    const unsubscribeCallReject = wsClient.on('CALL_REJECT', handleCallEvent);
 
     return () => {
       unsubscribeNewMessage();
       unsubscribeMessageSent();
+      unsubscribeCallEnd();
+      unsubscribeCallReject();
     };
   }, [activeConversation, conversation.id]);
 
@@ -324,7 +374,10 @@ function ConversationRow({ conversation, isActive, onSelect }: ConversationRowPr
 
       {/* Time + unread count */}
       <YStack items='flex-end' self='flex-start' gap='$1'>
-        <Text fontSize='$2' color={isActive ? 'rgba(255,255,255,0.8)' : '$textSecondary'}>
+        <Text
+          fontSize='$2'
+          color={isActive ? 'rgba(255,255,255,0.8)' : '$textSecondary'}
+        >
           {format(new Date(conversation.updatedAt), 'HH:mm', {
             locale: es,
           })}

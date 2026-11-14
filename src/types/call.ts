@@ -1,3 +1,4 @@
+import type { CallConversationEvent } from "./conversation";
 export interface CallIceCandidate {
   candidate: string;
   sdpMid?: string | null;
@@ -5,22 +6,34 @@ export interface CallIceCandidate {
   usernameFragment?: string | null;
 }
 
-export type CallMedia = 'audio' | 'video';
+export type CallMedia = "audio" | "video";
 
 export type CallStatus =
-  'ringing' | 'accepted' | 'connected' | 'rejected' | 'ended' | 'missed' | 'failed';
+  | "ringing"
+  | "accepted"
+  | "connected"
+  | "rejected"
+  | "ended"
+  | "missed"
+  | "failed";
 
-export type NegotiationType = 'INITIAL' | 'MEDIA_CHANGE' | 'ICE_RESTART';
+export type NegotiationType = "INITIAL" | "MEDIA_CHANGE" | "ICE_RESTART";
 
 export type NegotiationStatus =
-  'PENDING' | 'OFFERED' | 'ANSWERED' | 'COMPLETED' | 'FAILED' | 'EXPIRED' | 'CANCELLED';
+  | "PENDING"
+  | "OFFERED"
+  | "ANSWERED"
+  | "COMPLETED"
+  | "FAILED"
+  | "EXPIRED"
+  | "CANCELLED";
 
 export type Reference = { callId: string };
 export type Signal = Reference & { negotiationId: string; sdp: string };
 
 export type SignalAck = Reference & {
   negotiationId: string;
-  signalType: 'CALL_OFFER' | 'CALL_ANSWER';
+  signalType: "CALL_OFFER" | "CALL_ANSWER";
   signalId: string;
 };
 
@@ -30,20 +43,30 @@ export type Candidate = Reference & {
 };
 
 export interface CallClientPayloads {
-  CALL_INIT: { requestId: string; calleeId: string; media: CallMedia; callerName?: string };
+  CALL_INIT: {
+    conversationId?: string;
+    requestId: string;
+    calleeId: string;
+    media: CallMedia;
+    callerName?: string;
+  };
   CALL_ACCEPT: Reference;
   CALL_REJECT: Reference;
   CALL_END: Reference;
   CALL_TIMEOUT: Reference;
   CALL_CONNECTED: Reference;
-  CALL_NEGOTIATION_INIT: Reference & { requestId: string; type: NegotiationType };
+  CALL_NEGOTIATION_INIT: Reference & {
+    requestId: string;
+    type: NegotiationType;
+  };
   CALL_OFFER: Signal;
   CALL_ANSWER: Signal;
   CALL_SIGNAL_ACK: SignalAck;
   CALL_ICE_CANDIDATE: Candidate;
   CALL_RECOVERED: Reference & { negotiationId: string };
   CALL_SYNC: { syncId: string } & (
-    { callId: string; requestId?: never } | { requestId: string; callId?: never }
+    | { callId: string; requestId?: never }
+    | { requestId: string; callId?: never }
   );
 }
 
@@ -64,7 +87,7 @@ export interface CallSnapshot extends Reference {
   calleeId: string;
   media: CallMedia;
   status: CallStatus;
-  role: 'CALLER' | 'CALLEE';
+  role: "CALLER" | "CALLEE";
   isSelectedConnection: boolean;
   isTerminal: boolean;
   createdAt: string;
@@ -104,8 +127,13 @@ export interface CallServerPayloads {
     shouldCreateOffer: boolean;
     shouldInitiateNegotiation: boolean;
   };
-  CALL_REJECT: Reference & { status: CallStatus; endedAt?: string | null };
+  CALL_REJECT: Reference & {
+    conversationEvent?: CallConversationEvent;
+    status: CallStatus;
+    endedAt?: string | null;
+  };
   CALL_END: Reference & {
+    conversationEvent?: CallConversationEvent;
     callerName?: string;
     status?: CallStatus;
     endedAt?: string | null;
@@ -118,11 +146,18 @@ export interface CallServerPayloads {
     connectionExpiresAt: string | null;
   };
   CALL_NEGOTIATION_CREATED: Reference & Negotiation & { created: boolean };
-  CALL_OFFER: Signal & { negotiationType: NegotiationType; offererId: string; signalId: string };
+  CALL_OFFER: Signal & {
+    negotiationType: NegotiationType;
+    offererId: string;
+    signalId: string;
+  };
   CALL_ANSWER: Signal & { signalId: string };
   CALL_SIGNAL_ACK: SignalAck;
   CALL_ICE_CANDIDATE: Candidate;
-  CALL_NEGOTIATION_COMPLETED: Reference & { negotiationId: string; status: NegotiationStatus };
+  CALL_NEGOTIATION_COMPLETED: Reference & {
+    negotiationId: string;
+    status: NegotiationStatus;
+  };
   CALL_NEGOTIATION_END: Reference & {
     negotiationId: string;
     type: NegotiationType;
@@ -144,41 +179,41 @@ export interface CallServerPayloads {
 
 export const CALL_CLIENT_EVENTS = Object.fromEntries(
   [
-    'CALL_INIT',
-    'CALL_ACCEPT',
-    'CALL_REJECT',
-    'CALL_END',
-    'CALL_TIMEOUT',
-    'CALL_CONNECTED',
-    'CALL_NEGOTIATION_INIT',
-    'CALL_OFFER',
-    'CALL_ANSWER',
-    'CALL_SIGNAL_ACK',
-    'CALL_ICE_CANDIDATE',
-    'CALL_RECOVERED',
-    'CALL_SYNC',
+    "CALL_INIT",
+    "CALL_ACCEPT",
+    "CALL_REJECT",
+    "CALL_END",
+    "CALL_TIMEOUT",
+    "CALL_CONNECTED",
+    "CALL_NEGOTIATION_INIT",
+    "CALL_OFFER",
+    "CALL_ANSWER",
+    "CALL_SIGNAL_ACK",
+    "CALL_ICE_CANDIDATE",
+    "CALL_RECOVERED",
+    "CALL_SYNC",
   ].map((key) => [key, key]),
 ) as { [K in keyof CallClientPayloads]: K };
 
 export const CALL_SERVER_EVENTS = Object.fromEntries(
   [
-    'CALL_CREATED',
-    'CALL_INCOMING',
-    'CALL_ACCEPT',
-    'CALL_REJECT',
-    'CALL_END',
-    'CALL_CONNECTED',
-    'CALL_NEGOTIATION_CREATED',
-    'CALL_OFFER',
-    'CALL_ANSWER',
-    'CALL_SIGNAL_ACK',
-    'CALL_ICE_CANDIDATE',
-    'CALL_NEGOTIATION_COMPLETED',
-    'CALL_NEGOTIATION_END',
-    'CALL_RECOVERED',
-    'CALL_STATE',
+    "CALL_CREATED",
+    "CALL_INCOMING",
+    "CALL_ACCEPT",
+    "CALL_REJECT",
+    "CALL_END",
+    "CALL_CONNECTED",
+    "CALL_NEGOTIATION_CREATED",
+    "CALL_OFFER",
+    "CALL_ANSWER",
+    "CALL_SIGNAL_ACK",
+    "CALL_ICE_CANDIDATE",
+    "CALL_NEGOTIATION_COMPLETED",
+    "CALL_NEGOTIATION_END",
+    "CALL_RECOVERED",
+    "CALL_STATE",
   ].map((key) => [key, key]),
 ) as { [K in keyof CallServerPayloads]: K };
 
 export const isTerminal = (status: CallStatus) =>
-  ['rejected', 'ended', 'missed', 'failed'].includes(status);
+  ["rejected", "ended", "missed", "failed"].includes(status);

@@ -8,13 +8,19 @@ import { releaseChatRecorderForCall } from './call-audio-ownership';
 import { requestCallPermissions } from './call-permissions';
 import { startCallMedia } from './native-call-media';
 export function createCallLifecycle(store: CallStore) {
-  function start(participantId: string, media: CallMedia, callerName?: string) {
+  function start(
+    participantId: string,
+    media: CallMedia,
+    callerName?: string,
+    conversationId?: string,
+  ) {
     const current = store.getSession();
     if (current && !current.closed) {
       return;
     }
     const session = createCallSession(
       {
+        conversationId,
         participantId,
         media,
         incoming: false,
@@ -29,6 +35,9 @@ export function createCallLifecycle(store: CallStore) {
     store.publish(session);
     session.callerName = callerName?.trim().slice(0, 100) || undefined;
     wsClient.emit('CALL_INIT', {
+      ...(session.view.conversationId
+        ? { conversationId: session.view.conversationId }
+        : {}),
       requestId: session.requestId!,
       calleeId: participantId,
       media,
@@ -39,14 +48,28 @@ export function createCallLifecycle(store: CallStore) {
   function respondFromNotification(
     callId: string,
     action?: 'accept' | 'reject',
-    incoming?: Partial<Pick<CallView, 'participantId' | 'participantName' | 'media' | 'expiresAt'>>,
+    incoming?: Partial<
+      Pick<
+        CallView,
+        'participantId' | 'participantName' | 'media' | 'expiresAt'
+      >
+    >,
   ) {
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(callId)) return;
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        callId,
+      )
+    )
+      return;
     if (store.terminalIds.has(callId)) return;
     let session = store.getSession();
     if (session && !session.closed) {
       if (session.view.callId !== callId || !session.view.incoming) return;
-      if (session.view.status !== 'ringing' && session.view.status !== 'requesting') return;
+      if (
+        session.view.status !== 'ringing' &&
+        session.view.status !== 'requesting'
+      )
+        return;
       if (session.notificationAction) {
         if (action === 'reject') session.notificationAction = 'reject';
         return;
@@ -89,17 +112,28 @@ export function createCallLifecycle(store: CallStore) {
 
   function inspectFromNotification(
     callId: string,
-    incoming?: Pick<CallView, 'participantId' | 'participantName' | 'media' | 'expiresAt'>,
+    incoming?: Pick<
+      CallView,
+      'participantId' | 'participantName' | 'media' | 'expiresAt'
+    >,
   ) {
     respondFromNotification(callId, undefined, incoming);
   }
 
   function answerFromNotification(callId: string, expiresAt?: string) {
-    respondFromNotification(callId, 'accept', expiresAt ? { expiresAt } : undefined);
+    respondFromNotification(
+      callId,
+      'accept',
+      expiresAt ? { expiresAt } : undefined,
+    );
   }
 
   function rejectFromNotification(callId: string, expiresAt?: string) {
-    respondFromNotification(callId, 'reject', expiresAt ? { expiresAt } : undefined);
+    respondFromNotification(
+      callId,
+      'reject',
+      expiresAt ? { expiresAt } : undefined,
+    );
   }
 
   async function accept() {
@@ -114,7 +148,10 @@ export function createCallLifecycle(store: CallStore) {
         await releaseChatRecorderForCall();
         await requestCallPermissions(session.view.media, true);
         if (store.live(session) && session.view.status === 'ringing') {
-          if (session.view.expiresAt && Date.parse(session.view.expiresAt) <= Date.now()) {
+          if (
+            session.view.expiresAt &&
+            Date.parse(session.view.expiresAt) <= Date.now()
+          ) {
             finish(session, 'missed', 'La llamada ya expiró.');
             return;
           }
@@ -137,7 +174,9 @@ export function createCallLifecycle(store: CallStore) {
     session.cancelled = true;
     cleanup(session);
     if (session.view.callId) {
-      wsClient.emit(reject ? 'CALL_REJECT' : 'CALL_END', { callId: session.view.callId });
+      wsClient.emit(reject ? 'CALL_REJECT' : 'CALL_END', {
+        callId: session.view.callId,
+      });
       finish(session, reject ? 'rejected' : 'ended');
     } else {
       store.publish(session, { ending: true, notice: 'Cancelando llamada…' });
@@ -153,7 +192,9 @@ export function createCallLifecycle(store: CallStore) {
     if (session.view.held) {
       store.publish(
         session,
-        kind === 'audio' ? { muted: !session.view.muted } : { cameraOff: !session.view.cameraOff },
+        kind === 'audio'
+          ? { muted: !session.view.muted }
+          : { cameraOff: !session.view.cameraOff },
       );
       return;
     }
@@ -161,7 +202,10 @@ export function createCallLifecycle(store: CallStore) {
     if (enabled === undefined) {
       return;
     }
-    store.publish(session, kind === 'audio' ? { muted: !enabled } : { cameraOff: !enabled });
+    store.publish(
+      session,
+      kind === 'audio' ? { muted: !enabled } : { cameraOff: !enabled },
+    );
   }
 
   function setHeld(held: boolean) {
@@ -169,7 +213,10 @@ export function createCallLifecycle(store: CallStore) {
     if (!session || !store.live(session) || !session.view.selected) return;
     session.rtc.local?.getTracks().forEach((track) => {
       track.enabled =
-        !held && (track.kind === 'audio' ? !session.view.muted : !session.view.cameraOff);
+        !held &&
+        (track.kind === 'audio'
+          ? !session.view.muted
+          : !session.view.cameraOff);
     });
     store.publish(session, { held });
   }
@@ -192,10 +239,14 @@ export function createCallLifecycle(store: CallStore) {
     } catch (error) {
       if (store.live(session))
         store.publish(session, {
-          deviceError: error instanceof Error ? error.message : 'No se pudo cambiar de cámara.',
+          deviceError:
+            error instanceof Error
+              ? error.message
+              : 'No se pudo cambiar de cámara.',
         });
     } finally {
-      if (store.live(session)) store.publish(session, { switchingCamera: false });
+      if (store.live(session))
+        store.publish(session, { switchingCamera: false });
     }
   }
 
@@ -206,10 +257,16 @@ export function createCallLifecycle(store: CallStore) {
     session.syncId = randomUUID();
     session.nextSync = Date.now() + 5000;
     if (session.view.callId) {
-      wsClient.emit('CALL_SYNC', { syncId: session.syncId, callId: session.view.callId });
+      wsClient.emit('CALL_SYNC', {
+        syncId: session.syncId,
+        callId: session.view.callId,
+      });
     } else {
       if (session.requestId) {
-        wsClient.emit('CALL_SYNC', { syncId: session.syncId, requestId: session.requestId });
+        wsClient.emit('CALL_SYNC', {
+          syncId: session.syncId,
+          requestId: session.requestId,
+        });
       }
     }
   }
@@ -222,7 +279,8 @@ export function createCallLifecycle(store: CallStore) {
     const now = Date.now();
     if (
       session.view.incoming &&
-      (session.view.status === 'ringing' || session.view.status === 'requesting') &&
+      (session.view.status === 'ringing' ||
+        session.view.status === 'requesting') &&
       session.view.expiresAt &&
       now >= Date.parse(session.view.expiresAt)
     ) {
@@ -255,6 +313,9 @@ export function createCallLifecycle(store: CallStore) {
         // The first event may precede the native socket's authentication handshake.
         session.nextSync = now + 5000;
         wsClient.emit('CALL_INIT', {
+          ...(session.view.conversationId
+            ? { conversationId: session.view.conversationId }
+            : {}),
           requestId: session.requestId,
           calleeId: session.view.participantId,
           media: session.view.media,
@@ -299,7 +360,11 @@ export function createCallLifecycle(store: CallStore) {
     session.rtc.close();
   }
 
-  function finish(session: Session, status: CallStatus = 'ended', notice?: string) {
+  function finish(
+    session: Session,
+    status: CallStatus = 'ended',
+    notice?: string,
+  ) {
     if (session.closed) {
       return;
     }
@@ -321,7 +386,10 @@ export function createCallLifecycle(store: CallStore) {
   }
 
   function fail(session: Session, error: unknown) {
-    const message = error instanceof Error ? error.message : 'No se pudo establecer la llamada';
+    const message =
+      error instanceof Error
+        ? error.message
+        : 'No se pudo establecer la llamada';
     store.publish(session, { error: message });
     if (session.view.status !== 'connected') {
       if (session.view.callId) {

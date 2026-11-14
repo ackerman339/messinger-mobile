@@ -7,7 +7,11 @@ export interface CallContextValue {
   call: CallView | null;
   native: NativeCallSnapshot;
   starting: boolean;
-  handleStartCall: (participantId: string, media: CallMedia) => void;
+  handleStartCall: (
+    participantId: string,
+    media: CallMedia,
+    conversationId?: string,
+  ) => void;
   handleAcceptCall: () => void;
   handleRejectCall: () => void;
   handleEndCall: () => void;
@@ -17,9 +21,12 @@ export interface CallContextValue {
   handleSwitchCamera: () => void;
   handleToggleSpeaker: () => void;
 }
-export const CallContext = createContext<CallContextValue | undefined>(undefined);
+export const CallContext = createContext<CallContextValue | undefined>(
+  undefined,
+);
 export function useCallContext() {
   const context = useContext(CallContext);
-  if (!context) throw new Error('useCallContext must be used within CallProvider');
+  if (!context)
+    throw new Error('useCallContext must be used within CallProvider');
   return context;
 }

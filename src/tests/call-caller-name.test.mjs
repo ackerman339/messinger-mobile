@@ -28,11 +28,12 @@ test('CALL_INIT carries the client username on first send and retries', () => {
   sent.length = 0;
   const store = createCallStore();
   const lifecycle = createCallLifecycle(store);
-  lifecycle.start('callee', 'video', '  María Pérez  ');
+  lifecycle.start('callee', 'video', '  María Pérez  ', 'conversation');
   lifecycle.tick();
   const requests = sent.filter(([type]) => type === 'CALL_INIT');
   assert.equal(requests.length, 2);
   assert.equal(requests[0][1].callerName, 'María Pérez');
+  assert.equal(requests[0][1].conversationId, 'conversation');
   assert.deepEqual(requests[1], requests[0]);
 });
 test('CALL_INCOMING provides the displayed participant name without loading conversations', async () => {

@@ -16,8 +16,9 @@ import { useUserContext } from '@/src/contexts/user-context';
 import { useCursorPagination } from '@/src/hooks/use-cursor-pagination';
 import { conversationService } from '@/src/services/conversation';
 import { WS_SERVER_EVENTS } from '@/src/types/websocket';
+import { ConversationEventMessage } from './conversation-event-message';
 
-import type { Message } from '@/src/types/conversation';
+import type { CallConversationEvent, Message } from '@/src/types/conversation';
 import type { ListRenderItem } from 'react-native';
 
 const PAGE_SIZE = 20;
@@ -101,11 +102,31 @@ export function MessageList() {
       setItems((prev) => [...prev, message]);
     });
 
+    function appendCallEvent({ conversationEvent }: { conversationEvent?: CallConversationEvent }) {
+      if (!conversationEvent || conversationEvent.conversationId !== conversationId) return;
+      shouldScrollToBottomRef.current = true;
+      setItems((current) => [
+        ...current,
+        {
+          ...conversationEvent,
+          messageId: conversationEvent.id,
+          senderId: conversationEvent.actorId,
+          content: '',
+          attachments: [],
+          conversation: activeConversation!,
+        },
+      ]);
+    }
+    const offEnd = wsClient.on('CALL_END', appendCallEvent);
+    const offReject = wsClient.on('CALL_REJECT', appendCallEvent);
+
     return () => {
       unsubscribeNewMessage();
       unsubscribeSentMessage();
+      offEnd();
+      offReject();
     };
-  }, [conversationId, setItems]);
+  }, [conversationId, activeConversation, setItems]);
 
   /**
    * Initial scroll to bottom.
@@ -343,6 +364,15 @@ type MessageBubbleProps = {
 
 function MessageBubble({ message, selected, onSelect }: MessageBubbleProps) {
   const { user } = useUserContext();
+
+  if (message.type && message.type !== 'MESSAGE') {
+    return (
+      <ConversationEventMessage
+        message={message}
+        isOwn={!!user && message.metadata?.callerId === user.id}
+      />
+    );
+  }
 
   const isOwn = message.senderId === user?.id;
   const messageId = message.messageId || message.id;

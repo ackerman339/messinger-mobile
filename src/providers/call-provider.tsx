@@ -34,7 +34,9 @@ export function CallProvider({ children }: { children: ReactNode }) {
     if (
       !userId ||
       typeof incomingCall !== 'string' ||
-      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(incomingCall)
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        incomingCall,
+      )
     )
       return;
     // A full-screen launch only displays the panel. Accept/reject remain explicit actions.
@@ -47,7 +49,9 @@ export function CallProvider({ children }: { children: ReactNode }) {
   }, [incomingCall, userId]);
 
   useEffect(() => {
-    const unsubscribe = callClient.subscribe(() => setCall(callClient.getSnapshot()));
+    const unsubscribe = callClient.subscribe(() =>
+      setCall(callClient.getSnapshot()),
+    );
     const unsubscribeNative = nativeCallService.subscribe(() =>
       setNative(nativeCallService.getSnapshot()),
     );
@@ -79,7 +83,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
     };
   }, [userId, loading]);
 
-  async function handleStartCall(participantId: string, media: CallMedia) {
+  async function handleStartCall(
+    participantId: string,
+    media: CallMedia,
+    conversationId?: string,
+  ) {
     if (startInFlight.current || hasActiveCall() || !userId) return;
     if (!hasNativeCalling()) {
       Alert.alert(
@@ -95,12 +103,13 @@ export function CallProvider({ children }: { children: ReactNode }) {
       await requestCallPermissions(media, true);
       if (!(await nativeCallService.ensureReady()))
         throw new Error(
-          nativeCallService.getSnapshot().error ?? 'No se pudo iniciar la integración de llamadas.',
+          nativeCallService.getSnapshot().error ??
+            'No se pudo iniciar la integración de llamadas.',
         );
       if (getCallUser() !== userId) return;
       await nativeCallService.beginOutgoing(participantId, media);
       if (getCallUser() !== userId) return;
-      callClient.start(participantId, media, user?.username);
+      callClient.start(participantId, media, user?.username, conversationId);
     } catch (error) {
       Alert.alert(
         'No se pudo iniciar la llamada',
