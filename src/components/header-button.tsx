@@ -115,6 +115,7 @@ export function HeaderButton() {
           {activeConversation.type === 'PRIVATE' && participant && (
             <Button
               unstyled
+              width='100%'
               minH={44}
               px='$3'
               py='$2'
@@ -128,13 +129,14 @@ export function HeaderButton() {
               pressStyle={{ bg: '$backgroundHover' }}
             >
               <Radio size={18} color={COLORS['text-primary']} />
-              <Text flex={1} color='$textPrimary' fontSize='$3'>
+              <Text shrink={1} color='$textPrimary' fontSize='$3'>
                 Solicitar que se conecte
               </Text>
             </Button>
           )}
           <Button
             unstyled
+            width='100%'
             minH={44}
             px='$3'
             py='$2'
@@ -148,7 +150,7 @@ export function HeaderButton() {
             pressStyle={{ bg: '$backgroundHover' }}
           >
             <Eraser size={18} color={COLORS.danger} />
-            <Text flex={1} color='$red10' fontSize='$3'>
+            <Text shrink={1} color='#ef505d' fontSize='$3'>
               Vaciar chat
             </Text>
           </Button>
