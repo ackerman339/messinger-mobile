@@ -1,7 +1,13 @@
+import * as Clipboard from 'expo-clipboard';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Linking, Pressable } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Pressable,
+} from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { wsClient } from '@/src/clients/websocket-client';
@@ -25,6 +31,7 @@ const PAGE_SIZE = 20;
 const INITIAL_SCROLL_DELAY = 500;
 
 export function MessageList() {
+  const { user } = useUserContext();
   const { activeConversation, isLoadingAttachment, emptiedConversation } =
     useChatContext();
 
@@ -266,15 +273,39 @@ export function MessageList() {
   /**
    * Select/unselect a message.
    */
-  const toggleMessageSelection = useCallback((messageId: string) => {
-    setSelectedMessageIds((current) => {
-      if (current.includes(messageId)) {
-        return current.filter((id) => id !== messageId);
-      }
+  const toggleMessageSelection = useCallback(
+    (messageId: string) => {
+      setSelectedMessageIds((current) => {
+        if (current.includes(messageId)) {
+          return current.filter((id) => id !== messageId);
+        }
 
-      return [...current, messageId];
-    });
-  }, []);
+        const message = messages.find(
+          (item) => (item.messageId || item.id) === messageId,
+        );
+        if (!message) return current;
+        if (
+          message.senderId !== user?.id &&
+          (message.content === '' || message.attachments?.length)
+        )
+          return current;
+        if (current.length > 0) {
+          const selectedAreOwn = current.every((id) =>
+            messages.some(
+              (item) =>
+                (item.messageId || item.id) === id &&
+                item.senderId === user?.id,
+            ),
+          );
+          if (!user || message.senderId !== user.id || !selectedAreOwn)
+            return current;
+        }
+
+        return [...current, messageId];
+      });
+    },
+    [messages, user],
+  );
 
   /**
    * Clear selection.
@@ -282,6 +313,29 @@ export function MessageList() {
   const clearSelection = useCallback(() => {
     setSelectedMessageIds([]);
   }, []);
+
+  const selectedMessages = messages.filter((message) =>
+    selectedMessageIds.includes(message.messageId || message.id),
+  );
+  const canDelete =
+    selectedMessages.length > 0 &&
+    selectedMessages.every((message) => !!user && message.senderId === user.id);
+  const selectedText =
+    selectedMessageIds.length === 1 &&
+    selectedMessages.length === 1 &&
+    !selectedMessages[0].attachments?.length
+      ? selectedMessages[0].content
+      : '';
+
+  async function copyMessages() {
+    if (!selectedText) return;
+    try {
+      if (!(await Clipboard.setStringAsync(selectedText))) throw new Error();
+      clearSelection();
+    } catch {
+      Alert.alert('No se pudo copiar el texto. Inténtalo de nuevo.');
+    }
+  }
 
   /**
    * Delete selected messages.
@@ -291,7 +345,7 @@ export function MessageList() {
       return;
     }
 
-    if (selectedMessageIds.length === 0) {
+    if (!canDelete) {
       return;
     }
 
@@ -315,7 +369,7 @@ export function MessageList() {
     } finally {
       setIsDeletingMessagesLoading(false);
     }
-  }, [conversationId, selectedMessageIds, setItems]);
+  }, [conversationId, selectedMessageIds, setItems, canDelete]);
 
   const renderItem = useCallback<ListRenderItem<Message>>(
     ({ item }) => {
@@ -359,6 +413,9 @@ export function MessageList() {
         <MessageSelectionBar
           count={selectedMessageIds.length}
           isLoading={isDeletingMessagesLoading}
+          canCopy={selectedText !== ''}
+          canDelete={canDelete}
+          onCopy={copyMessages}
           onDelete={deleteMessages}
           onClose={clearSelection}
         />
@@ -415,13 +472,10 @@ function MessageBubble({ message, selected, onSelect }: MessageBubbleProps) {
   }
 
   const isOwn = message.senderId === user?.id;
+  const isLink = /^https?:\/\/\S+$/.test(message.content.trim());
   const messageId = message.messageId || message.id;
 
   function handlePress() {
-    if (!isOwn) {
-      return;
-    }
-
     onSelect(messageId);
   }
 
@@ -429,7 +483,6 @@ function MessageBubble({ message, selected, onSelect }: MessageBubbleProps) {
     <XStack width='100%' justify={isOwn ? 'flex-end' : 'flex-start'}>
       <Pressable
         onPress={handlePress}
-        disabled={!isOwn}
         style={{
           maxWidth: '76%',
           borderRadius: 8,
@@ -449,21 +502,14 @@ function MessageBubble({ message, selected, onSelect }: MessageBubbleProps) {
           borderWidth={selected ? 2 : 0}
           borderColor={selected ? '$accent' : 'transparent'}
         >
-          {/^https?:\/\/\S+$/.test(message.content.trim()) ? (
-            <Text
-              fontSize='$3'
-              lineHeight={20}
-              color='$accent'
-              textDecorationLine='underline'
-              onPress={() => Linking.openURL(message.content.trim())}
-            >
-              {message.content}
-            </Text>
-          ) : (
-            <Text fontSize='$3' lineHeight={20} color='$textPrimary'>
-              {message.content}
-            </Text>
-          )}
+          <Text
+            fontSize='$3'
+            lineHeight={20}
+            color={isLink ? '$accent' : '$textPrimary'}
+            textDecorationLine={isLink ? 'underline' : 'none'}
+          >
+            {message.content}
+          </Text>
           {message.attachments?.length ? (
             <YStack gap='$2' my='$2'>
               {message.attachments.map((attachment) => (

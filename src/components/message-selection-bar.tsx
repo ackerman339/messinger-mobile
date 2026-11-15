@@ -1,10 +1,13 @@
-import { Trash2, X } from 'lucide-react-native';
+import { Copy, Trash2, X } from 'lucide-react-native';
 import { ActivityIndicator } from 'react-native';
 import { Button, Text, XStack } from 'tamagui';
 
 type MessageSelectionBarProps = {
   count: number;
   isLoading: boolean;
+  canCopy: boolean;
+  canDelete: boolean;
+  onCopy: () => void;
   onDelete: () => void;
   onClose: () => void;
 };
@@ -12,6 +15,9 @@ type MessageSelectionBarProps = {
 export function MessageSelectionBar({
   count,
   isLoading,
+  canCopy,
+  canDelete,
+  onCopy,
   onDelete,
   onClose,
 }: MessageSelectionBarProps) {
@@ -51,32 +57,38 @@ export function MessageSelectionBar({
         </Button>
 
         <Text fontSize='$3' fontWeight='500' color='$textPrimary'>
-          {count} {count === 1 ? 'mensaje seleccionado' : 'mensajes seleccionados'}
+          {count} {count === 1 ? 'seleccionado' : 'seleccionados'}
         </Text>
       </XStack>
 
-      <Button
-        unstyled
-        flexDirection='row'
-        items='center'
-        gap='$2'
-        px='$3'
-        py='$2'
-        bg='transparent'
-        disabled={isLoading}
-        opacity={isLoading ? 0.5 : 1}
-        pressStyle={{
-          bg: '$red5',
-        }}
-        onPress={onDelete}
-        accessibilityLabel='Eliminar mensajes'
-      >
-        {isLoading ? <ActivityIndicator /> : <Trash2 size={20} color='red' />}
-
-        <Text fontSize='$3' color='$red10'>
-          Eliminar
-        </Text>
-      </Button>
+      <XStack items='center' gap='$2'>
+        {canCopy && (
+          <Button
+            unstyled
+            p='$2'
+            disabled={isLoading}
+            onPress={onCopy}
+            accessibilityLabel='Copiar texto'
+          >
+            <Copy size={20} color='#000000' />
+          </Button>
+        )}
+        {canDelete && (
+          <Button
+            unstyled
+            p='$2'
+            disabled={isLoading}
+            onPress={onDelete}
+            accessibilityLabel='Eliminar mensajes'
+          >
+            {isLoading ? (
+              <ActivityIndicator />
+            ) : (
+              <Trash2 size={20} color='red' />
+            )}
+          </Button>
+        )}
+      </XStack>
     </XStack>
   );
 }
