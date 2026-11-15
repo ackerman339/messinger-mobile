@@ -1,8 +1,11 @@
+import { COLORS } from '@/src/lib/constants';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { MessagesSquare, Phone } from 'lucide-react-native';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, type ListRenderItem } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, type ListRenderItem } from 'react-native';
 import { Avatar, Button, Input, Text, XStack, YStack } from 'tamagui';
+import { CallHistoryList } from './call-history-list';
 
 import { wsClient } from '@/src/clients/websocket-client';
 import { useChatContext } from '@/src/contexts/chat-context';
@@ -15,6 +18,7 @@ import { ChatMenu } from './chat-menu';
 import type { CallConversationEvent, Conversation, Message } from '@/src/types/conversation';
 
 export function ConversationList() {
+  const [activeTab, setActiveTab] = useState<'chats' | 'calls'>('chats');
   const {
     conversations,
     activeConversation,
@@ -71,6 +75,7 @@ export function ConversationList() {
    * the end of the conversation list.
    */
   const handleEndReached = useCallback(() => {
+    if (activeTab !== 'chats') return;
     if (loadingConversations) {
       return;
     }
@@ -86,7 +91,7 @@ export function ConversationList() {
     loadingMoreRef.current = true;
 
     loadMoreConversations();
-  }, [loadingConversations, hasMoreConversations, loadMoreConversations]);
+  }, [activeTab, loadingConversations, hasMoreConversations, loadMoreConversations]);
 
   /**
    * Unlock pagination after the request finishes.
@@ -126,12 +131,59 @@ export function ConversationList() {
 
   return (
     <YStack flex={1} bg='$bgSidebar'>
-      <YStack borderBottomWidth={1} borderBottomColor='$border' px='$4' py='$3'>
-        <XStack items='center' gap='$3'>
-          <ChatMenu />
-
+      <XStack
+        height={64}
+        borderBottomWidth={1}
+        borderBottomColor='$border'
+        px='$4'
+        gap='$3'
+        items='center'
+      >
+        <ChatMenu />
+        <Text fontSize='$5' fontWeight='600' color='$textPrimary'>
+          Pulse
+        </Text>
+      </XStack>
+      <XStack
+        accessibilityRole='tablist'
+        accessibilityLabel='Chats y llamadas'
+        borderBottomWidth={1}
+        borderBottomColor='$border'
+        px='$3'
+      >
+        {(['chats', 'calls'] as const).map((tab) => {
+          const selected = activeTab === tab;
+          const Icon = tab === 'chats' ? MessagesSquare : Phone;
+          return (
+            <Pressable
+              key={tab}
+              onPress={() => setActiveTab(tab)}
+              accessibilityRole='tab'
+              accessibilityState={{ selected }}
+              accessibilityLabel={tab === 'chats' ? 'Chats' : 'Llamadas'}
+              style={{
+                flex: 1,
+                borderBottomWidth: 2,
+                borderBottomColor: selected ? COLORS.accent : 'transparent',
+              }}
+            >
+              <XStack py='$3' items='center' justify='center' gap='$2'>
+                <Icon size={18} color={selected ? COLORS.accent : COLORS['text-secondary']} />
+                <Text
+                  fontSize='$3'
+                  fontWeight='600'
+                  color={selected ? '$accent' : '$textSecondary'}
+                >
+                  {tab === 'chats' ? 'Chats' : 'Llamadas'}
+                </Text>
+              </XStack>
+            </Pressable>
+          );
+        })}
+      </XStack>
+      <YStack flex={1} display={activeTab === 'chats' ? 'flex' : 'none'}>
+        <YStack px='$4' py='$3'>
           <Input
-            flex={1}
             height={40}
             bg='$background'
             borderWidth={0}
@@ -140,46 +192,48 @@ export function ConversationList() {
             color='$textPrimary'
             placeholder='Buscar conversaciones'
             placeholderTextColor='$textSecondary'
+            accessibilityLabel='Buscar conversaciones'
           />
-        </XStack>
+        </YStack>
+        {loadingConversations && conversationsItems.length === 0 ? (
+          <ListState label='Cargando conversaciones...' />
+        ) : !loadingConversations && conversationsItems.length === 0 ? (
+          <ListState label='No tienes conversaciones aún' />
+        ) : (
+          <FlatList
+            data={conversationsItems}
+            keyExtractor={keyExtractor}
+            renderItem={renderItem}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{
+              padding: 8,
+            }}
+            /**
+             * Trigger pagination when the user gets
+             * close to the end of the list.
+             */
+            onEndReached={handleEndReached}
+            /**
+             * Trigger pagination when the user is within
+             * 20% of the end of the list.
+             */
+            onEndReachedThreshold={0.2}
+            /**
+             * Show a loading indicator below the
+             * existing conversations while loading
+             * the next page.
+             */
+            ListFooterComponent={
+              loadingConversations && conversationsItems.length > 0 ? (
+                <YStack py='$3' items='center'>
+                  <ActivityIndicator />
+                </YStack>
+              ) : null
+            }
+          />
+        )}
       </YStack>
-      {loadingConversations && conversationsItems.length === 0 ? (
-        <ListState label='Cargando conversaciones...' />
-      ) : !loadingConversations && conversationsItems.length === 0 ? (
-        <ListState label='No tienes conversaciones aún' />
-      ) : (
-        <FlatList
-          data={conversationsItems}
-          keyExtractor={keyExtractor}
-          renderItem={renderItem}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{
-            padding: 8,
-          }}
-          /**
-           * Trigger pagination when the user gets
-           * close to the end of the list.
-           */
-          onEndReached={handleEndReached}
-          /**
-           * Trigger pagination when the user is within
-           * 20% of the end of the list.
-           */
-          onEndReachedThreshold={0.2}
-          /**
-           * Show a loading indicator below the
-           * existing conversations while loading
-           * the next page.
-           */
-          ListFooterComponent={
-            loadingConversations && conversationsItems.length > 0 ? (
-              <YStack py='$3' items='center'>
-                <ActivityIndicator />
-              </YStack>
-            ) : null
-          }
-        />
-      )}
+      {activeTab === 'calls' && <CallHistoryList />}
       <Text color='red' fontSize='$1'>
         APK version 1.3.3
       </Text>
@@ -223,6 +277,10 @@ function ConversationRow({ conversation, isActive, onSelect }: ConversationRowPr
     privateConversationUser?.unreadCount ?? 0,
   );
 
+  const lastEntryRef = useRef<Pick<Message, 'type' | 'metadata'> | undefined>(
+    conversation.lastMessage,
+  );
+
   const [lastMessageContent, setLastMessageContent] = useState(
     getLastMessageContent(conversation.lastMessage),
   );
@@ -240,6 +298,7 @@ function ConversationRow({ conversation, isActive, onSelect }: ConversationRowPr
         setUnreadMessageCount((previous) => previous + 1);
       }
 
+      lastEntryRef.current = message;
       setLastMessageContent(getLastMessageContent(message));
 
       if (activeConversation) {
@@ -254,20 +313,40 @@ function ConversationRow({ conversation, isActive, onSelect }: ConversationRowPr
      */
     const unsubscribeMessageSent = wsClient.on(WS_SERVER_EVENTS.MESSAGE_SENT, (message) => {
       if (message.conversation.id === conversation.id) {
+        lastEntryRef.current = message;
         setLastMessageContent(getLastMessageContent(message));
       }
     });
 
     function handleCallEvent({ conversationEvent }: { conversationEvent?: CallConversationEvent }) {
       if (!conversationEvent || conversationEvent.conversationId !== conversation.id) return;
+      lastEntryRef.current = conversationEvent;
       setLastMessageContent(getLastMessageContent(conversationEvent));
     }
     const unsubscribeCallEnd = wsClient.on('CALL_END', handleCallEvent);
     const unsubscribeCallReject = wsClient.on('CALL_REJECT', handleCallEvent);
 
+    const unsubscribeHistoryDeleted = wsClient.on('CALL_HISTORY_DELETED', async ({ callId }) => {
+      const entry = lastEntryRef.current;
+      if (!entry || (entry.type !== 'CALL_ACCEPTED' && entry.type !== 'CALL_END')) return;
+      if (callId && entry.metadata?.callId !== callId) return;
+      try {
+        const result = await conversationService.getMessages(conversation.id, {
+          cursor: null,
+          limit: 1,
+        });
+        if (lastEntryRef.current !== entry) return;
+        lastEntryRef.current = result.page[0];
+        setLastMessageContent(getLastMessageContent(result.page[0]));
+      } catch {
+        // The next bootstrap will refresh the preview if the connection is unavailable.
+      }
+    });
+
     return () => {
       unsubscribeNewMessage();
       unsubscribeMessageSent();
+      unsubscribeHistoryDeleted();
       unsubscribeCallEnd();
       unsubscribeCallReject();
     };

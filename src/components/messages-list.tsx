@@ -37,7 +37,8 @@ export function MessageList() {
   const loadingMoreRef = useRef(false);
 
   const [selectedMessageIds, setSelectedMessageIds] = useState<string[]>([]);
-  const [isDeletingMessagesLoading, setIsDeletingMessagesLoading] = useState(false);
+  const [isDeletingMessagesLoading, setIsDeletingMessagesLoading] =
+    useState(false);
 
   const {
     items: messages,
@@ -82,28 +83,42 @@ export function MessageList() {
    * WebSocket messages.
    */
   useEffect(() => {
-    const unsubscribeNewMessage = wsClient.on(WS_SERVER_EVENTS.NEW_MESSAGE, (message) => {
-      if (message.conversation.id !== conversationId) {
+    const unsubscribeNewMessage = wsClient.on(
+      WS_SERVER_EVENTS.NEW_MESSAGE,
+      (message) => {
+        if (message.conversation.id !== conversationId) {
+          return;
+        }
+
+        shouldScrollToBottomRef.current = true;
+
+        setItems((prev) => [...prev, message]);
+      },
+    );
+
+    const unsubscribeSentMessage = wsClient.on(
+      WS_SERVER_EVENTS.MESSAGE_SENT,
+      (message) => {
+        if (message.conversation.id !== conversationId) {
+          return;
+        }
+
+        shouldScrollToBottomRef.current = true;
+
+        setItems((prev) => [...prev, message]);
+      },
+    );
+
+    function appendCallEvent({
+      conversationEvent,
+    }: {
+      conversationEvent?: CallConversationEvent;
+    }) {
+      if (
+        !conversationEvent ||
+        conversationEvent.conversationId !== conversationId
+      )
         return;
-      }
-
-      shouldScrollToBottomRef.current = true;
-
-      setItems((prev) => [...prev, message]);
-    });
-
-    const unsubscribeSentMessage = wsClient.on(WS_SERVER_EVENTS.MESSAGE_SENT, (message) => {
-      if (message.conversation.id !== conversationId) {
-        return;
-      }
-
-      shouldScrollToBottomRef.current = true;
-
-      setItems((prev) => [...prev, message]);
-    });
-
-    function appendCallEvent({ conversationEvent }: { conversationEvent?: CallConversationEvent }) {
-      if (!conversationEvent || conversationEvent.conversationId !== conversationId) return;
       shouldScrollToBottomRef.current = true;
       setItems((current) => [
         ...current,
@@ -117,6 +132,18 @@ export function MessageList() {
         },
       ]);
     }
+    const offHistoryDeleted = wsClient.on(
+      'CALL_HISTORY_DELETED',
+      ({ callId }) => {
+        setItems((current) =>
+          current.filter(
+            (item) =>
+              (item.type !== 'CALL_ACCEPTED' && item.type !== 'CALL_END') ||
+              (callId && item.metadata?.callId !== callId),
+          ),
+        );
+      },
+    );
     const offEnd = wsClient.on('CALL_END', appendCallEvent);
     const offReject = wsClient.on('CALL_REJECT', appendCallEvent);
 
@@ -124,6 +151,7 @@ export function MessageList() {
       unsubscribeNewMessage();
       unsubscribeSentMessage();
       offEnd();
+      offHistoryDeleted();
       offReject();
     };
   }, [conversationId, activeConversation, setItems]);
@@ -295,7 +323,10 @@ export function MessageList() {
     [selectedMessageIds, toggleMessageSelection],
   );
 
-  const keyExtractor = useCallback((item: Message) => item.messageId || item.id, []);
+  const keyExtractor = useCallback(
+    (item: Message) => item.messageId || item.id,
+    [],
+  );
 
   if (!activeConversation) {
     return <EmptyState label='Selecciona una conversación' />;
@@ -427,7 +458,10 @@ function MessageBubble({ message, selected, onSelect }: MessageBubbleProps) {
           {message.attachments?.length ? (
             <YStack gap='$2' my='$2'>
               {message.attachments.map((attachment) => (
-                <MessageAttachment key={attachment.id} attachment={attachment} />
+                <MessageAttachment
+                  key={attachment.id}
+                  attachment={attachment}
+                />
               ))}
             </YStack>
           ) : null}
@@ -469,7 +503,13 @@ function MessageAttachment({ attachment }: MessageAttachmentProps) {
     return <AudioAttachment attachmentId={id} fileName={fileName} />;
   }
 
-  return <FileAttachment attachmentId={id} fileName={fileName} contentType={contentType} />;
+  return (
+    <FileAttachment
+      attachmentId={id}
+      fileName={fileName}
+      contentType={contentType}
+    />
+  );
 }
 
 function EmptyState({ label }: { label: string }) {

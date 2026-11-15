@@ -18,6 +18,7 @@ export const WS_CLIENT_EVENTS = {
 } as const;
 
 export const WS_SERVER_EVENTS = {
+  CALL_HISTORY_DELETED: 'CALL_HISTORY_DELETED',
   REQUEST_AUTH_TOKEN: 'REQUEST_AUTH_TOKEN',
   MESSAGE_SENT: 'MESSAGE_SENT',
   NEW_MESSAGE: 'NEW_MESSAGE',
@@ -169,6 +170,7 @@ export interface WsServerPayloads extends CallServerPayloads {
   [WS_SERVER_EVENTS.REQUEST_AUTH_TOKEN]: {
     accessToken: string;
   };
+  [WS_SERVER_EVENTS.CALL_HISTORY_DELETED]: { callId?: string };
   [WS_SERVER_EVENTS.ERROR]: {
     success: false;
     error: {

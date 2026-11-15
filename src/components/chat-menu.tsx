@@ -33,7 +33,11 @@ export function ChatMenu() {
 
   return (
     <>
-      <Popover open={menuOpen} onOpenChange={setMenuOpen} placement='bottom-start'>
+      <Popover
+        open={menuOpen}
+        onOpenChange={setMenuOpen}
+        placement='bottom-start'
+      >
         <Popover.Trigger asChild>
           <Button
             circular
@@ -97,7 +101,10 @@ export function ChatMenu() {
         </Popover.Content>
       </Popover>
 
-      <NewMessageDialog open={newMessageOpen} onOpenChange={setNewMessageOpen} />
+      <NewMessageDialog
+        open={newMessageOpen}
+        onOpenChange={setNewMessageOpen}
+      />
     </>
   );
 }
@@ -109,7 +116,12 @@ type MenuItemProps = {
   color?: '$textPrimary' | '$red10';
 };
 
-function MenuItem({ icon, label, onPress, color = '$textPrimary' }: MenuItemProps) {
+function MenuItem({
+  icon,
+  label,
+  onPress,
+  color = '$textPrimary',
+}: MenuItemProps) {
   return (
     <Button
       unstyled
