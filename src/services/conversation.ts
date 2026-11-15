@@ -1,7 +1,11 @@
 import { httpClient } from '@/src/clients/http-client';
 
 import type { Conversation, Message } from '@/src/types/conversation';
-import type { ApiResponse, Pagination, PaginationParams } from '@/src/types/service-response';
+import type {
+  ApiResponse,
+  Pagination,
+  PaginationParams,
+} from '@/src/types/service-response';
 
 export interface CreateGroupDto {
   name: string;
@@ -35,12 +39,17 @@ export interface ResetUnreadMessagesDto {
   conversationId: string;
 }
 
+export interface RequestUserConnectionDto {
+  senderName: string;
+  targetUserId: string;
+  conversationId: string;
+}
+
 export const conversationService = {
   getBootstrap: async (params: PaginationParams) => {
-    const response = await httpClient.get<ApiResponse<Pagination<Conversation>>>(
-      '/conversation-list',
-      { params },
-    );
+    const response = await httpClient.get<
+      ApiResponse<Pagination<Conversation>>
+    >('/conversation-list', { params });
     return response.data.result;
   },
 
@@ -59,14 +68,24 @@ export const conversationService = {
     await httpClient.delete('/conversation/delete-messages', { data });
   },
 
+  requestUserConnection: async (data: RequestUserConnectionDto) => {
+    await httpClient.post('/push/request-user-connection', data);
+  },
+
+  emptyMessages: async (data: DeleteConversationDto) => {
+    await httpClient.patch('/conversation/empty-messages', data);
+  },
+
   resetUnreadMessagesCount: async (data: ResetUnreadMessagesDto) => {
     await httpClient.patch('/conversation/reset-unread-messages-count', data);
   },
 
   // TODO: type responses
-  createGroup: (data: CreateGroupDto) => httpClient.post('/conversation/create-group', data),
+  createGroup: (data: CreateGroupDto) =>
+    httpClient.post('/conversation/create-group', data),
 
-  leaveGroup: (data: LeaveGroupDto) => httpClient.post('/conversation/leave-group', data),
+  leaveGroup: (data: LeaveGroupDto) =>
+    httpClient.post('/conversation/leave-group', data),
 
   transferOwnership: (data: TransferOwnershipDto) =>
     httpClient.post('/conversation/transfer-ownership', data),

@@ -25,7 +25,8 @@ const PAGE_SIZE = 20;
 const INITIAL_SCROLL_DELAY = 500;
 
 export function MessageList() {
-  const { activeConversation, isLoadingAttachment } = useChatContext();
+  const { activeConversation, isLoadingAttachment, emptiedConversation } =
+    useChatContext();
 
   const conversationId = activeConversation?.id ?? null;
 
@@ -47,6 +48,7 @@ export function MessageList() {
     loadMore,
     setItems,
     error,
+    refresh,
   } = useCursorPagination<Message>({
     fetchPage: async (cursor) => {
       if (!conversationId) {
@@ -66,6 +68,13 @@ export function MessageList() {
 
     deps: [conversationId],
   });
+
+  useEffect(() => {
+    if (!emptiedConversation || emptiedConversation.id !== conversationId)
+      return;
+    refresh();
+    setSelectedMessageIds([]);
+  }, [emptiedConversation, conversationId, refresh]);
 
   /**
    * Reset state when changing conversation.

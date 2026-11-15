@@ -2,8 +2,19 @@ import { COLORS } from '@/src/lib/constants';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { MessagesSquare, Phone } from 'lucide-react-native';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, type ListRenderItem } from 'react-native';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  type ListRenderItem,
+} from 'react-native';
 import { Avatar, Button, Input, Text, XStack, YStack } from 'tamagui';
 import { CallHistoryList } from './call-history-list';
 
@@ -15,7 +26,11 @@ import { WS_SERVER_EVENTS } from '@/src/types/websocket';
 
 import { ChatMenu } from './chat-menu';
 
-import type { CallConversationEvent, Conversation, Message } from '@/src/types/conversation';
+import type {
+  CallConversationEvent,
+  Conversation,
+  Message,
+} from '@/src/types/conversation';
 
 export function ConversationList() {
   const [activeTab, setActiveTab] = useState<'chats' | 'calls'>('chats');
@@ -91,7 +106,12 @@ export function ConversationList() {
     loadingMoreRef.current = true;
 
     loadMoreConversations();
-  }, [activeTab, loadingConversations, hasMoreConversations, loadMoreConversations]);
+  }, [
+    activeTab,
+    loadingConversations,
+    hasMoreConversations,
+    loadMoreConversations,
+  ]);
 
   /**
    * Unlock pagination after the request finishes.
@@ -168,7 +188,10 @@ export function ConversationList() {
               }}
             >
               <XStack py='$3' items='center' justify='center' gap='$2'>
-                <Icon size={18} color={selected ? COLORS.accent : COLORS['text-secondary']} />
+                <Icon
+                  size={18}
+                  color={selected ? COLORS.accent : COLORS['text-secondary']}
+                />
                 <Text
                   fontSize='$3'
                   fontWeight='600'
@@ -245,7 +268,9 @@ function getLastMessageContent(
   message?: Pick<Message, 'type' | 'metadata'> & { content?: string },
 ) {
   if (message?.type === 'CALL_ACCEPTED' || message?.type === 'CALL_END') {
-    return message.metadata?.media === 'video' ? 'Videollamada' : 'Llamada de voz';
+    return message.metadata?.media === 'video'
+      ? 'Videollamada'
+      : 'Llamada de voz';
   }
   return message?.content ?? '';
 }
@@ -256,15 +281,21 @@ type ConversationRowProps = {
   onSelect: () => void;
 };
 
-function ConversationRow({ conversation, isActive, onSelect }: ConversationRowProps) {
+function ConversationRow({
+  conversation,
+  isActive,
+  onSelect,
+}: ConversationRowProps) {
   const { user } = useUserContext();
-  const { activeConversation } = useChatContext();
+  const { activeConversation, emptiedConversation } = useChatContext();
 
   const privateConversationMember = conversation.members.find(
     (member) => member.userId !== user?.id,
   );
 
-  const privateConversationUser = conversation.members.find((member) => member.userId === user?.id);
+  const privateConversationUser = conversation.members.find(
+    (member) => member.userId === user?.id,
+  );
 
   const title =
     conversation.type === 'GROUP'
@@ -285,63 +316,94 @@ function ConversationRow({ conversation, isActive, onSelect }: ConversationRowPr
     getLastMessageContent(conversation.lastMessage),
   );
 
+  useEffect(() => {
+    if (emptiedConversation?.id !== conversation.id) return;
+    lastEntryRef.current = undefined;
+    setLastMessageContent('');
+    setUnreadMessageCount(0);
+  }, [emptiedConversation, conversation.id]);
+
   /**
    * Listen for incoming messages.
    */
   useLayoutEffect(() => {
-    const unsubscribeNewMessage = wsClient.on(WS_SERVER_EVENTS.NEW_MESSAGE, async (message) => {
-      if (message.conversation.id !== conversation.id) {
-        return;
-      }
+    const unsubscribeNewMessage = wsClient.on(
+      WS_SERVER_EVENTS.NEW_MESSAGE,
+      async (message) => {
+        if (message.conversation.id !== conversation.id) {
+          return;
+        }
 
-      if (!activeConversation || activeConversation.id !== conversation.id) {
-        setUnreadMessageCount((previous) => previous + 1);
-      }
+        if (!activeConversation || activeConversation.id !== conversation.id) {
+          setUnreadMessageCount((previous) => previous + 1);
+        }
 
-      lastEntryRef.current = message;
-      setLastMessageContent(getLastMessageContent(message));
+        lastEntryRef.current = message;
+        setLastMessageContent(getLastMessageContent(message));
 
-      if (activeConversation) {
-        await conversationService.resetUnreadMessagesCount({
-          conversationId: activeConversation.id,
-        });
-      }
-    });
+        if (activeConversation) {
+          await conversationService.resetUnreadMessagesCount({
+            conversationId: activeConversation.id,
+          });
+        }
+      },
+    );
 
     /**
      * Listen for messages sent by the current user.
      */
-    const unsubscribeMessageSent = wsClient.on(WS_SERVER_EVENTS.MESSAGE_SENT, (message) => {
-      if (message.conversation.id === conversation.id) {
-        lastEntryRef.current = message;
-        setLastMessageContent(getLastMessageContent(message));
-      }
-    });
+    const unsubscribeMessageSent = wsClient.on(
+      WS_SERVER_EVENTS.MESSAGE_SENT,
+      (message) => {
+        if (message.conversation.id === conversation.id) {
+          lastEntryRef.current = message;
+          setLastMessageContent(getLastMessageContent(message));
+        }
+      },
+    );
 
-    function handleCallEvent({ conversationEvent }: { conversationEvent?: CallConversationEvent }) {
-      if (!conversationEvent || conversationEvent.conversationId !== conversation.id) return;
+    function handleCallEvent({
+      conversationEvent,
+    }: {
+      conversationEvent?: CallConversationEvent;
+    }) {
+      if (
+        !conversationEvent ||
+        conversationEvent.conversationId !== conversation.id
+      )
+        return;
       lastEntryRef.current = conversationEvent;
       setLastMessageContent(getLastMessageContent(conversationEvent));
     }
     const unsubscribeCallEnd = wsClient.on('CALL_END', handleCallEvent);
     const unsubscribeCallReject = wsClient.on('CALL_REJECT', handleCallEvent);
 
-    const unsubscribeHistoryDeleted = wsClient.on('CALL_HISTORY_DELETED', async ({ callId }) => {
-      const entry = lastEntryRef.current;
-      if (!entry || (entry.type !== 'CALL_ACCEPTED' && entry.type !== 'CALL_END')) return;
-      if (callId && entry.metadata?.callId !== callId) return;
-      try {
-        const result = await conversationService.getMessages(conversation.id, {
-          cursor: null,
-          limit: 1,
-        });
-        if (lastEntryRef.current !== entry) return;
-        lastEntryRef.current = result.page[0];
-        setLastMessageContent(getLastMessageContent(result.page[0]));
-      } catch {
-        // The next bootstrap will refresh the preview if the connection is unavailable.
-      }
-    });
+    const unsubscribeHistoryDeleted = wsClient.on(
+      'CALL_HISTORY_DELETED',
+      async ({ callId }) => {
+        const entry = lastEntryRef.current;
+        if (
+          !entry ||
+          (entry.type !== 'CALL_ACCEPTED' && entry.type !== 'CALL_END')
+        )
+          return;
+        if (callId && entry.metadata?.callId !== callId) return;
+        try {
+          const result = await conversationService.getMessages(
+            conversation.id,
+            {
+              cursor: null,
+              limit: 1,
+            },
+          );
+          if (lastEntryRef.current !== entry) return;
+          lastEntryRef.current = result.page[0];
+          setLastMessageContent(getLastMessageContent(result.page[0]));
+        } catch {
+          // The next bootstrap will refresh the preview if the connection is unavailable.
+        }
+      },
+    );
 
     return () => {
       unsubscribeNewMessage();
@@ -421,7 +483,10 @@ function ConversationRow({ conversation, isActive, onSelect }: ConversationRowPr
 
       {/* Time + unread count */}
       <YStack items='flex-end' self='flex-start' gap='$1'>
-        <Text fontSize='$2' color={isActive ? 'rgba(255,255,255,0.8)' : '$textSecondary'}>
+        <Text
+          fontSize='$2'
+          color={isActive ? 'rgba(255,255,255,0.8)' : '$textSecondary'}
+        >
           {format(new Date(conversation.updatedAt), 'HH:mm', {
             locale: es,
           })}

@@ -12,27 +12,38 @@ import { userService } from '@/src/services/user';
 import { WS_CLIENT_EVENTS } from '@/src/types/websocket';
 
 import type { Conversation } from '@/src/types/conversation';
-import type { FileAttachment, LocalFile, UploadContentType } from '@/src/types/file';
+import type {
+  FileAttachment,
+  LocalFile,
+  UploadContentType,
+} from '@/src/types/file';
 import type { ReactNode } from 'react';
 
 export function ChatProvider({ children }: { children: ReactNode }) {
   const { user } = useUserContext();
 
-  const [conversations, setConversations] = useState<Map<string, Conversation>>(new Map());
+  const [conversations, setConversations] = useState<Map<string, Conversation>>(
+    new Map(),
+  );
   const [activeConversationId, setActiveConversationId] = useState('');
   const [receiverId, setReceiverId] = useState('');
   const [isLoadingAttachment, setIsLoadingAttachment] = useState(false);
+  const [emptiedConversation, setEmptiedConversation] = useState<Pick<
+    Conversation,
+    'id'
+  > | null>(null);
 
   const appState = useRef(AppState.currentState);
 
-  const { items, isLoading, hasMore, loadMore, refresh } = useCursorPagination<Conversation>({
-    fetchPage: (cursor) =>
-      conversationService.getBootstrap({
-        cursor,
-        limit: 20,
-      }),
-    deps: [],
-  });
+  const { items, isLoading, hasMore, loadMore, refresh } =
+    useCursorPagination<Conversation>({
+      fetchPage: (cursor) =>
+        conversationService.getBootstrap({
+          cursor,
+          limit: 20,
+        }),
+      deps: [],
+    });
 
   /**
    * Merge paginated conversations into the context map.
@@ -68,7 +79,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
-      if (appState.current.match(/inactive|background/) && nextState === 'active') {
+      if (
+        appState.current.match(/inactive|background/) &&
+        nextState === 'active'
+      ) {
         refresh();
       }
 
@@ -79,14 +93,17 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   useEffect(() => {
-    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (activeConversationId) {
-        setActiveConversationId('');
-        return true;
-      }
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        if (activeConversationId) {
+          setActiveConversationId('');
+          return true;
+        }
 
-      return false;
-    });
+        return false;
+      },
+    );
 
     return () => subscription.remove();
   }, [activeConversationId]);
@@ -115,6 +132,25 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     () => conversations.get(activeConversationId) ?? null,
     [conversations, activeConversationId],
   );
+
+  function handleEmptyChat(conversationId: string) {
+    setConversations((previous) => {
+      const conversation = previous.get(conversationId);
+      if (!conversation) return previous;
+      const next = new Map(previous);
+      next.set(conversationId, {
+        ...conversation,
+        messages: [],
+        messagesCursor: null,
+        lastMessage: undefined,
+        members: conversation.members.map((member) =>
+          member.userId === user?.id ? { ...member, unreadCount: 0 } : member,
+        ),
+      });
+      return next;
+    });
+    setEmptiedConversation({ id: conversationId });
+  }
 
   function unSetCurrentConversation() {
     setActiveConversationId('');
@@ -157,7 +193,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     await Promise.all(
       attachments.map(async (item) => {
         const upload = files.find((file) => file.name === item.fileName);
-        const uploadItem = uploadItems.find((upload) => upload.key === item.storageKey);
+        const uploadItem = uploadItems.find(
+          (upload) => upload.key === item.storageKey,
+        );
 
         if (!upload || !uploadItem) {
           throw new Error(`No presigned URL for ${item.fileName}`);
@@ -171,7 +209,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     return attachments;
   }
 
-  function handleSendMessage(content: string, attachments: FileAttachment[] = []) {
+  function handleSendMessage(
+    content: string,
+    attachments: FileAttachment[] = [],
+  ) {
     if (activeConversation && activeConversation.type === 'GROUP') {
       wsClient.emit(WS_CLIENT_EVENTS.SEND_GROUP_MESSAGE, {
         content,
@@ -183,7 +224,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
     const targetReceiverId =
       receiverId ||
-      activeConversation?.members.find((member) => member.userId !== user?.id)?.userId;
+      activeConversation?.members.find((member) => member.userId !== user?.id)
+        ?.userId;
 
     if (!targetReceiverId) {
       return;
@@ -214,6 +256,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         receiverId,
         hasMoreConversations: hasMore,
         isLoadingAttachment,
+        emptiedConversation,
+        handleEmptyChat,
         handleSendMessage,
         handleCurrentConversation,
         prepareAttachments,

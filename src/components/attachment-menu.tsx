@@ -1,7 +1,21 @@
+import {
+  DOCUMENT_PICKER_TYPES,
+  getAttachmentContentType,
+  type DocumentCategory,
+} from '@/src/lib/attachment-types';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
+import { File } from 'expo-file-system';
+import { Alert } from 'react-native';
 
-import { FileText, Image, Paperclip, Plus, Video } from 'lucide-react-native';
+import {
+  FileText,
+  FileUp,
+  Image,
+  Paperclip,
+  Plus,
+  Video,
+} from 'lucide-react-native';
 import { useState } from 'react';
 import { Button, Popover, Text, YStack } from 'tamagui';
 
@@ -13,7 +27,10 @@ type AttachmentMenuProps = {
   onFilesSelected: (files: LocalFile[]) => void;
 };
 
-export function AttachmentMenu({ disabled = false, onFilesSelected }: AttachmentMenuProps) {
+export function AttachmentMenu({
+  disabled = false,
+  onFilesSelected,
+}: AttachmentMenuProps) {
   const [open, setOpen] = useState(false);
 
   async function handleImages() {
@@ -58,38 +75,50 @@ export function AttachmentMenu({ disabled = false, onFilesSelected }: Attachment
     onFilesSelected(files);
   }
 
-  async function handleDocuments(type: 'pdf' | 'documents') {
+  async function handleDocuments(category: DocumentCategory) {
     setOpen(false);
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        // Unknown GIS/model MIME types must remain selectable on Android/iOS.
+        type:
+          category === 'pdf'
+            ? 'application/pdf'
+            : category === 'other'
+              ? '*/*'
+              : DOCUMENT_PICKER_TYPES,
+        multiple: true,
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled) return;
 
-    const result = await DocumentPicker.getDocumentAsync({
-      type:
-        type === 'pdf'
-          ? 'application/pdf'
-          : [
-              'application/msword',
-              'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-              'application/vnd.ms-excel',
-              'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-              'application/vnd.ms-powerpoint',
-              'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-              'text/plain',
-              'text/csv',
-              'application/pdf',
-            ],
-      multiple: true,
-      copyToCacheDirectory: true,
-    });
-
-    if (result.canceled) return;
-
-    const files = result.assets.map((asset) => ({
-      uri: asset.uri,
-      name: asset.name,
-      type: asset.mimeType ?? 'application/octet-stream',
-      size: asset.size,
-    })) as LocalFile[];
-
-    onFilesSelected(files);
+      const files: LocalFile[] = [];
+      const unsupported: string[] = [];
+      for (const asset of result.assets) {
+        const contentType = getAttachmentContentType(asset.name, category);
+        if (!contentType) {
+          unsupported.push(asset.name);
+          continue;
+        }
+        files.push({
+          uri: asset.uri,
+          name: asset.name,
+          type: contentType,
+          size: asset.size ?? new File(asset.uri).size,
+        });
+      }
+      if (unsupported.length) {
+        Alert.alert(
+          'Formato no compatible',
+          `No se agregaron estos archivos: ${unsupported.join(', ')}.`,
+        );
+      }
+      if (files.length) onFilesSelected(files);
+    } catch {
+      Alert.alert(
+        'No se pudieron seleccionar los archivos',
+        'Inténtalo de nuevo.',
+      );
+    }
   }
 
   return (
@@ -108,7 +137,10 @@ export function AttachmentMenu({ disabled = false, onFilesSelected }: Attachment
           }}
           accessibilityLabel='Enviar archivo'
         >
-          <Plus size={20} color={disabled ? COLORS['text-secondary'] : COLORS['text-primary']} />
+          <Plus
+            size={20}
+            color={disabled ? COLORS['text-secondary'] : COLORS['text-primary']}
+          />
         </Button>
       </Popover.Trigger>
 
@@ -143,6 +175,11 @@ export function AttachmentMenu({ disabled = false, onFilesSelected }: Attachment
             icon={<Paperclip size={20} color={COLORS['text-primary']} />}
             label='Documentos'
             onPress={() => handleDocuments('documents')}
+          />
+          <AttachmentItem
+            icon={<FileUp size={20} color={COLORS['text-primary']} />}
+            label='Otros archivos'
+            onPress={() => handleDocuments('other')}
           />
         </YStack>
       </Popover.Content>

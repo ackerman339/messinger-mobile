@@ -1,4 +1,5 @@
-import { ArrowLeft, MoreVertical } from 'lucide-react-native';
+import { HeaderButton } from './header-button';
+import { ArrowLeft } from 'lucide-react-native';
 import { useLayoutEffect, useState } from 'react';
 import { Avatar, Button, Text, XStack, YStack } from 'tamagui';
 
@@ -119,12 +120,22 @@ export function ChatHeader() {
           </Text>
 
           {activeConversation.type === 'PRIVATE' && presence.online ? (
-            <Text numberOfLines={1} ellipsizeMode='tail' fontSize='$1' color='$textSecondary'>
+            <Text
+              numberOfLines={1}
+              ellipsizeMode='tail'
+              fontSize='$1'
+              color='$textSecondary'
+            >
               En linea
             </Text>
           ) : (
             presence.lastSeenAt && (
-              <Text numberOfLines={1} ellipsizeMode='tail' fontSize='$1' color='$textSecondary'>
+              <Text
+                numberOfLines={1}
+                ellipsizeMode='tail'
+                fontSize='$1'
+                color='$textSecondary'
+              >
                 Última vez: {formatLastSeen(presence.lastSeenAt)}
               </Text>
             )
@@ -133,24 +144,11 @@ export function ChatHeader() {
       </XStack>
 
       <XStack items='center' gap='$1'>
-        {activeConversation.type === 'PRIVATE' && privateConversationMember?.userId && (
-          <CallButtons participantId={privateConversationMember.userId} />
-        )}
-        <Button
-          circular
-          size='$4'
-          unstyled
-          items='flex-end'
-          justify='center'
-          bg='transparent'
-          pressStyle={{
-            bg: '$backgroundHover',
-          }}
-          accessibilityLabel='Más opciones'
-          onPress={() => {}}
-        >
-          <MoreVertical size={22} color={COLORS['text-secondary']} />
-        </Button>
+        {activeConversation.type === 'PRIVATE' &&
+          privateConversationMember?.userId && (
+            <CallButtons participantId={privateConversationMember.userId} />
+          )}
+        <HeaderButton />
       </XStack>
     </XStack>
   );
