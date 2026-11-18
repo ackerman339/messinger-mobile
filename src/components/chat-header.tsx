@@ -16,7 +16,8 @@ type Presence = { online: boolean; lastSeenAt: Date | null };
 
 export function ChatHeader() {
   const { user } = useUserContext();
-  const { activeConversation, unSetCurrentConversation } = useChatContext();
+  const { activeConversation, unSetCurrentConversation } =
+    useChatContext();
 
   const [presence, setPresence] = useState<Presence>({
     online: false,
@@ -146,9 +147,13 @@ export function ChatHeader() {
       <XStack items='center' gap='$1'>
         {activeConversation.type === 'PRIVATE' &&
           privateConversationMember?.userId && (
-            <CallButtons participantId={privateConversationMember.userId} />
+            <CallButtons
+              participantId={privateConversationMember.userId}
+            />
           )}
-        <HeaderButton />
+        {!activeConversation.invitation && (
+          <HeaderButton key={activeConversation.id} />
+        )}
       </XStack>
     </XStack>
   );

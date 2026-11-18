@@ -24,7 +24,10 @@ import { conversationService } from '@/src/services/conversation';
 import { WS_SERVER_EVENTS } from '@/src/types/websocket';
 import { ConversationEventMessage } from './conversation-event-message';
 
-import type { CallConversationEvent, Message } from '@/src/types/conversation';
+import type {
+  CallConversationEvent,
+  Message,
+} from '@/src/types/conversation';
 import type { ListRenderItem } from 'react-native';
 
 const PAGE_SIZE = 20;
@@ -44,7 +47,9 @@ export function MessageList() {
   const initialScrollRef = useRef(true);
   const loadingMoreRef = useRef(false);
 
-  const [selectedMessageIds, setSelectedMessageIds] = useState<string[]>([]);
+  const [selectedMessageIds, setSelectedMessageIds] = useState<string[]>(
+    [],
+  );
   const [isDeletingMessagesLoading, setIsDeletingMessagesLoading] =
     useState(false);
 
@@ -58,6 +63,11 @@ export function MessageList() {
     refresh,
   } = useCursorPagination<Message>({
     fetchPage: async (cursor) => {
+      if (activeConversation?.isDeleted)
+        return {
+          page: [...activeConversation.messages].reverse(),
+          nextCursor: null,
+        };
       if (!conversationId) {
         return {
           page: [],
@@ -72,6 +82,7 @@ export function MessageList() {
     },
 
     reverse: true,
+    getItemKey: (message) => message.messageId || message.id,
 
     deps: [conversationId],
   });
@@ -82,6 +93,15 @@ export function MessageList() {
     refresh();
     setSelectedMessageIds([]);
   }, [emptiedConversation, conversationId, refresh]);
+
+  useEffect(() => {
+    if (activeConversation?.groupRevision && !activeConversation.isDeleted)
+      refresh();
+  }, [
+    activeConversation?.groupRevision,
+    activeConversation?.isDeleted,
+    refresh,
+  ]);
 
   /**
    * Reset state when changing conversation.
@@ -99,29 +119,54 @@ export function MessageList() {
    * WebSocket messages.
    */
   useEffect(() => {
+    let live = true;
     const unsubscribeNewMessage = wsClient.on(
       WS_SERVER_EVENTS.NEW_MESSAGE,
       (message) => {
-        if (message.conversation.id !== conversationId) {
+        if (!live) return;
+        if (
+          (message.conversation?.id ?? message.conversationId) !==
+          conversationId
+        ) {
           return;
         }
 
         shouldScrollToBottomRef.current = true;
 
-        setItems((prev) => [...prev, message]);
+        setItems((prev) =>
+          prev.some(
+            (item) =>
+              (item.messageId || item.id) ===
+              (message.messageId || message.id),
+          )
+            ? prev
+            : [...prev, message],
+        );
       },
     );
 
     const unsubscribeSentMessage = wsClient.on(
       WS_SERVER_EVENTS.MESSAGE_SENT,
       (message) => {
-        if (message.conversation.id !== conversationId) {
+        if (!live) return;
+        if (
+          (message.conversation?.id ?? message.conversationId) !==
+          conversationId
+        ) {
           return;
         }
 
         shouldScrollToBottomRef.current = true;
 
-        setItems((prev) => [...prev, message]);
+        setItems((prev) =>
+          prev.some(
+            (item) =>
+              (item.messageId || item.id) ===
+              (message.messageId || message.id),
+          )
+            ? prev
+            : [...prev, message],
+        );
       },
     );
 
@@ -131,30 +176,39 @@ export function MessageList() {
       conversationEvent?: CallConversationEvent;
     }) {
       if (
+        !live ||
         !conversationEvent ||
         conversationEvent.conversationId !== conversationId
       )
         return;
       shouldScrollToBottomRef.current = true;
-      setItems((current) => [
-        ...current,
-        {
-          ...conversationEvent,
-          messageId: conversationEvent.id,
-          senderId: conversationEvent.actorId,
-          content: '',
-          attachments: [],
-          conversation: activeConversation!,
-        },
-      ]);
+      setItems((current) =>
+        current.some(
+          (item) => (item.messageId || item.id) === conversationEvent.id,
+        )
+          ? current
+          : [
+              ...current,
+              {
+                ...conversationEvent,
+                messageId: conversationEvent.id,
+                senderId: conversationEvent.actorId,
+                content: '',
+                attachments: [],
+                conversation: activeConversation!,
+              },
+            ],
+      );
     }
     const offHistoryDeleted = wsClient.on(
       'CALL_HISTORY_DELETED',
       ({ callId }) => {
+        if (!live) return;
         setItems((current) =>
           current.filter(
             (item) =>
-              (item.type !== 'CALL_ACCEPTED' && item.type !== 'CALL_END') ||
+              (item.type !== 'CALL_ACCEPTED' &&
+                item.type !== 'CALL_END') ||
               (callId && item.metadata?.callId !== callId),
           ),
         );
@@ -164,6 +218,7 @@ export function MessageList() {
     const offReject = wsClient.on('CALL_REJECT', appendCallEvent);
 
     return () => {
+      live = false;
       unsubscribeNewMessage();
       unsubscribeSentMessage();
       offEnd();
@@ -319,7 +374,9 @@ export function MessageList() {
   );
   const canDelete =
     selectedMessages.length > 0 &&
-    selectedMessages.every((message) => !!user && message.senderId === user.id);
+    selectedMessages.every(
+      (message) => !!user && message.senderId === user.id,
+    );
   const selectedText =
     selectedMessageIds.length === 1 &&
     selectedMessages.length === 1 &&
@@ -330,7 +387,8 @@ export function MessageList() {
   async function copyMessages() {
     if (!selectedText) return;
     try {
-      if (!(await Clipboard.setStringAsync(selectedText))) throw new Error();
+      if (!(await Clipboard.setStringAsync(selectedText)))
+        throw new Error();
       clearSelection();
     } catch {
       Alert.alert('No se pudo copiar el texto. Inténtalo de nuevo.');
@@ -459,13 +517,25 @@ type MessageBubbleProps = {
   onSelect: (messageId: string) => void;
 };
 
-function MessageBubble({ message, selected, onSelect }: MessageBubbleProps) {
+function MessageBubble({
+  message,
+  selected,
+  onSelect,
+}: MessageBubbleProps) {
   const { user } = useUserContext();
+  const { activeConversation, conversations } = useChatContext();
 
   if (message.type && message.type !== 'MESSAGE') {
     return (
       <ConversationEventMessage
         message={message}
+        members={[
+          ...(activeConversation?.members ?? []),
+          ...(activeConversation?.knownMembers ?? []),
+          ...[...(conversations?.values() ?? [])].flatMap(
+            (conversation) => conversation.members,
+          ),
+        ]}
         isOwn={!!user && message.metadata?.callerId === user.id}
       />
     );

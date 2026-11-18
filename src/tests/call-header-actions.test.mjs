@@ -21,7 +21,13 @@ function nodes(node) {
   if (Array.isArray(node)) return node.flatMap(nodes);
   return [node, ...nodes(node.props?.children)];
 }
-function fixture(type = 'PRIVATE', empty = async () => {}) {
+function fixture(
+  type = 'PRIVATE',
+  empty = async () => {},
+  role = 'MEMBER',
+  invitation,
+  isDeleted,
+) {
   const requests = [],
     emptied = [],
     alerts = [],
@@ -29,13 +35,17 @@ function fixture(type = 'PRIVATE', empty = async () => {}) {
   const conversation = {
     id: 'chat',
     type,
-    members: [{ userId: 'alice' }, { userId: 'bob' }],
+    invitation,
+    isDeleted,
+    members: [{ userId: 'alice', role }, { userId: 'bob' }],
   };
   const Popover = Object.assign(() => null, {
     Trigger: 'Trigger',
     Content: 'Content',
   });
   const dependencies = {
+    './invite-group-dialog': { InviteGroupDialog: () => null },
+    './group-management-dialog': { GroupManagementDialog: () => null },
     react: {
       useRef: (current) => ({ current }),
       useState: (value) => [value, () => {}],
@@ -81,8 +91,8 @@ function fixture(type = 'PRIVATE', empty = async () => {}) {
   );
   const tree = module.exports.HeaderButton();
   const action = (label) =>
-    nodes(tree).find((node) => node.props?.accessibilityLabel === label)?.props
-      .onPress;
+    nodes(tree).find((node) => node.props?.accessibilityLabel === label)
+      ?.props.onPress;
   return { action, requests, emptied, alerts, cleared };
 }
 const flush = () => new Promise((resolve) => setImmediate(resolve));
@@ -119,4 +129,31 @@ test('groups support emptying without targeting an arbitrary member for connecti
   const f = fixture('GROUP');
   assert.equal(f.action('Solicitar que se conecte'), undefined);
   assert.equal(typeof f.action('Vaciar chat'), 'function');
+});
+
+test('only active group owners see the invite action', () => {
+  assert.equal(
+    typeof fixture('GROUP', undefined, 'OWNER').action('Invitar personas'),
+    'function',
+  );
+  assert.equal(fixture('GROUP').action('Invitar personas'), undefined);
+  assert.equal(
+    fixture('PRIVATE', undefined, 'OWNER').action('Invitar personas'),
+    undefined,
+  );
+  assert.equal(
+    fixture('GROUP', undefined, 'OWNER', {}).action('Invitar personas'),
+    undefined,
+  );
+});
+
+test('group administration options match the current role', () => {
+  const owner = fixture('GROUP', undefined, 'OWNER');
+  assert.equal(typeof owner.action('Eliminar grupo'), 'function');
+  assert.equal(typeof owner.action('Transferir propiedad'), 'function');
+  assert.equal(owner.action('Salir del grupo'), undefined);
+  const member = fixture('GROUP');
+  assert.equal(typeof member.action('Salir del grupo'), 'function');
+  assert.equal(member.action('Eliminar grupo'), undefined);
+  assert.equal(member.action('Transferir propiedad'), undefined);
 });

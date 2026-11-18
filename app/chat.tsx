@@ -1,5 +1,8 @@
 import { KeyboardAvoidingView, Platform } from 'react-native';
-import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated';
+import Animated, {
+  useAnimatedStyle,
+  withTiming,
+} from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PortalHost, PortalProvider, YStack } from 'tamagui';
 
@@ -9,6 +12,7 @@ import { ChatHeader } from '@/src/components/chat-header';
 import { ConversationList } from '@/src/components/conversations-list';
 import { MessageComposer } from '@/src/components/message-composer';
 import { MessageList } from '@/src/components/messages-list';
+import { GroupInvitationPanel } from '@/src/components/group-invitation-panel';
 import { useChatContext } from '@/src/contexts/chat-context';
 import { AttachmentProvider } from '@/src/providers/attachment-provider';
 import { ChatProvider } from '@/src/providers/chat-provider';
@@ -35,6 +39,7 @@ function ChatContent() {
         <ConversationList />
         {activeConversation && (
           <Animated.View
+            key={activeConversation.id}
             style={[
               {
                 position: 'absolute',
@@ -48,8 +53,14 @@ function ChatContent() {
           >
             <YStack flex={1} bg='$background'>
               <ChatHeader />
-              <MessageList />
-              <MessageComposer />
+              {activeConversation.invitation ? (
+                <GroupInvitationPanel key={activeConversation.id} />
+              ) : (
+                <>
+                  <MessageList key={activeConversation.id} />
+                  <MessageComposer key={activeConversation.id} />
+                </>
+              )}
             </YStack>
           </Animated.View>
         )}
@@ -63,13 +74,13 @@ export default function ChatPage() {
     <UserProvider>
       <ChatProvider>
         <CallProvider>
-        <AttachmentProvider>
-          <PortalProvider>
-            <ChatContent />
-            <CallPanel />
-            <PortalHost name='chat' />
-          </PortalProvider>
-        </AttachmentProvider>
+          <AttachmentProvider>
+            <PortalProvider>
+              <ChatContent />
+              <CallPanel />
+              <PortalHost name='chat' />
+            </PortalProvider>
+          </AttachmentProvider>
         </CallProvider>
       </ChatProvider>
     </UserProvider>

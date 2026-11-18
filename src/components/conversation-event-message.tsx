@@ -1,36 +1,56 @@
 import { format } from 'date-fns';
-import { ArrowDownLeft, ArrowUpRight, Phone, Video } from 'lucide-react-native';
+import {
+  ArrowDownLeft,
+  ArrowUpRight,
+  Phone,
+  Video,
+} from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 import type { Message } from '../types/conversation';
 
-type EventMessage = Pick<Message, 'type' | 'metadata' | 'createdAt'>;
+type EventMessage = Pick<
+  Message,
+  'type' | 'metadata' | 'createdAt' | 'actorId' | 'targetUserId'
+>;
+type EventMember = { userId: string; username: string };
 
-function groupEventText(type: Message['type']) {
-  return (
-    (
-      {
-        GROUP_CREATED: 'Grupo creado',
-        MEMBER_JOINED: 'Un miembro se unió',
-        MEMBER_LEFT: 'Un miembro salió',
-        MEMBER_REMOVED: 'Un miembro fue eliminado',
-        OWNERSHIP_TRANSFERRED: 'Se transfirió la propiedad',
-      } as Record<string, string>
-    )[type] ?? 'Evento de conversación'
-  );
+function groupEventText(message: EventMessage, members: EventMember[]) {
+  const id = message.targetUserId || message.actorId;
+  const name = members.find((member) => member.userId === id)?.username;
+  const target = name || 'Un miembro';
+  switch (message.type) {
+    case 'GROUP_CREATED':
+      return name ? `${name} creó el grupo` : 'Grupo creado';
+    case 'MEMBER_JOINED':
+      return `${target} se unió al grupo`;
+    case 'MEMBER_LEFT':
+      return `${target} dejó el grupo`;
+    case 'MEMBER_REMOVED':
+      return `${target} fue eliminado del grupo`;
+    case 'OWNERSHIP_TRANSFERRED':
+      return name
+        ? `${name} es el nuevo propietario del grupo`
+        : 'Se transfirió la propiedad';
+    default:
+      return 'Evento de conversación';
+  }
 }
 
 export function ConversationEventMessage({
   message,
   isOwn = false,
+  members = [],
 }: {
   message: EventMessage;
   isOwn?: boolean;
+  members?: EventMember[];
 }) {
   if (message.type !== 'CALL_ACCEPTED' && message.type !== 'CALL_END') {
     return (
       <YStack items='center' py='$2'>
         <Text color='$textSecondary' fontSize='$2'>
-          {groupEventText(message.type)} · {format(new Date(message.createdAt), 'HH:mm')}
+          {groupEventText(message, members)} ·{' '}
+          {format(new Date(message.createdAt), 'HH:mm')}
         </Text>
       </YStack>
     );
@@ -41,7 +61,9 @@ export function ConversationEventMessage({
   const Icon = video ? Video : Phone;
   const Direction = isOwn ? ArrowUpRight : ArrowDownLeft;
   const rawSeconds = Number(message.metadata?.durationSeconds ?? 0);
-  const seconds = Number.isFinite(rawSeconds) ? Math.max(0, Math.floor(rawSeconds)) : 0;
+  const seconds = Number.isFinite(rawSeconds)
+    ? Math.max(0, Math.floor(rawSeconds))
+    : 0;
   const duration = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
   const outcome =
     (
@@ -50,11 +72,16 @@ export function ConversationEventMessage({
         missed: isOwn ? 'Sin respuesta' : 'Perdida',
         failed: 'No se pudo conectar',
       } as Record<string, string>
-    )[String(message.metadata?.status)] ?? (isOwn ? 'Cancelada' : 'No contestada');
+    )[String(message.metadata?.status)] ??
+    (isOwn ? 'Cancelada' : 'No contestada');
   const iconColor = accepted ? '#25a975' : '#e35d6a';
 
   return (
-    <XStack width='100%' justify={isOwn ? 'flex-end' : 'flex-start'} py='$1'>
+    <XStack
+      width='100%'
+      justify={isOwn ? 'flex-end' : 'flex-start'}
+      py='$1'
+    >
       <YStack
         minW={235}
         maxW='85%'
@@ -72,7 +99,9 @@ export function ConversationEventMessage({
             rounded='$10'
             items='center'
             justify='center'
-            bg={accepted ? 'rgba(37,169,117,0.12)' : 'rgba(227,93,106,0.12)'}
+            bg={
+              accepted ? 'rgba(37,169,117,0.12)' : 'rgba(227,93,106,0.12)'
+            }
           >
             <Icon size={23} color={iconColor} />
           </XStack>

@@ -51,7 +51,8 @@ export function ConversationList() {
   const loadingMoreRef = useRef(false);
 
   const conversationsItems = Array.from(conversations.values()).sort(
-    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    (a, b) =>
+      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
   );
 
   /**
@@ -64,7 +65,10 @@ export function ConversationList() {
     const unsubscribeNewConversationFrom = wsClient.on(
       WS_SERVER_EVENTS.NEW_MESSAGE,
       async (message) => {
-        if (!conversations.has(message.conversation.id)) {
+        if (
+          message.conversation &&
+          !conversations.has(message.conversation.id)
+        ) {
           handleNewConversation(message.conversation);
         }
       },
@@ -73,7 +77,10 @@ export function ConversationList() {
     const unsubscribeNewConversationTo = wsClient.on(
       WS_SERVER_EVENTS.MESSAGE_SENT,
       async (message) => {
-        if (!conversations.has(message.conversation.id)) {
+        if (
+          message.conversation &&
+          !conversations.has(message.conversation.id)
+        ) {
           handleNewConversation(message.conversation);
         }
       },
@@ -129,11 +136,16 @@ export function ConversationList() {
     async (conversationId: string) => {
       handleCurrentConversation(conversationId);
 
+      if (
+        conversations.get(conversationId)?.invitation ||
+        conversations.get(conversationId)?.isDeleted
+      )
+        return;
       await conversationService.resetUnreadMessagesCount({
         conversationId,
       });
     },
-    [handleCurrentConversation],
+    [handleCurrentConversation, conversations],
   );
 
   const renderItem = useCallback<ListRenderItem<Conversation>>(
@@ -184,13 +196,17 @@ export function ConversationList() {
               style={{
                 flex: 1,
                 borderBottomWidth: 2,
-                borderBottomColor: selected ? COLORS.accent : 'transparent',
+                borderBottomColor: selected
+                  ? COLORS.accent
+                  : 'transparent',
               }}
             >
               <XStack py='$3' items='center' justify='center' gap='$2'>
                 <Icon
                   size={18}
-                  color={selected ? COLORS.accent : COLORS['text-secondary']}
+                  color={
+                    selected ? COLORS.accent : COLORS['text-secondary']
+                  }
                 />
                 <Text
                   fontSize='$3'
@@ -258,7 +274,7 @@ export function ConversationList() {
       </YStack>
       {activeTab === 'calls' && <CallHistoryList />}
       <Text color='red' fontSize='$1'>
-        APK version 1.3.3
+        APK version 1.4.0
       </Text>
     </YStack>
   );
@@ -308,9 +324,9 @@ function ConversationRow({
     privateConversationUser?.unreadCount ?? 0,
   );
 
-  const lastEntryRef = useRef<Pick<Message, 'type' | 'metadata'> | undefined>(
-    conversation.lastMessage,
-  );
+  const lastEntryRef = useRef<
+    Pick<Message, 'type' | 'metadata'> | undefined
+  >(conversation.lastMessage);
 
   const [lastMessageContent, setLastMessageContent] = useState(
     getLastMessageContent(conversation.lastMessage),
@@ -330,11 +346,17 @@ function ConversationRow({
     const unsubscribeNewMessage = wsClient.on(
       WS_SERVER_EVENTS.NEW_MESSAGE,
       async (message) => {
-        if (message.conversation.id !== conversation.id) {
+        if (
+          (message.conversation?.id ?? message.conversationId) !==
+          conversation.id
+        ) {
           return;
         }
 
-        if (!activeConversation || activeConversation.id !== conversation.id) {
+        if (
+          !activeConversation ||
+          activeConversation.id !== conversation.id
+        ) {
           setUnreadMessageCount((previous) => previous + 1);
         }
 
@@ -355,7 +377,10 @@ function ConversationRow({
     const unsubscribeMessageSent = wsClient.on(
       WS_SERVER_EVENTS.MESSAGE_SENT,
       (message) => {
-        if (message.conversation.id === conversation.id) {
+        if (
+          (message.conversation?.id ?? message.conversationId) ===
+          conversation.id
+        ) {
           lastEntryRef.current = message;
           setLastMessageContent(getLastMessageContent(message));
         }
@@ -376,7 +401,10 @@ function ConversationRow({
       setLastMessageContent(getLastMessageContent(conversationEvent));
     }
     const unsubscribeCallEnd = wsClient.on('CALL_END', handleCallEvent);
-    const unsubscribeCallReject = wsClient.on('CALL_REJECT', handleCallEvent);
+    const unsubscribeCallReject = wsClient.on(
+      'CALL_REJECT',
+      handleCallEvent,
+    );
 
     const unsubscribeHistoryDeleted = wsClient.on(
       'CALL_HISTORY_DELETED',
@@ -477,7 +505,11 @@ function ConversationRow({
           }
           width='100%'
         >
-          {lastMessageContent}
+          {conversation.isDeleted
+            ? 'Este grupo fue eliminado'
+            : conversation.invitation
+              ? 'Invitación pendiente'
+              : lastMessageContent}
         </Text>
       </YStack>
 

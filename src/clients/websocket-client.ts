@@ -1,16 +1,43 @@
+import { randomUUID } from 'expo-crypto';
 import { router } from 'expo-router';
 
 import { authService } from '@/src/services/auth';
 import { tokenStorage } from '@/src/token-storage';
 import { WS_CLIENT_EVENTS, WS_SERVER_EVENTS } from '@/src/types/websocket';
 
-import type { WsClientPayloads, WsServerPayloads } from '@/src/types/websocket';
+import type {
+  WsClientPayloads,
+  WsServerPayloads,
+} from '@/src/types/websocket';
 
 type ServerEvent = keyof WsServerPayloads;
 type ClientEvent = keyof WsClientPayloads;
 type Handler<T> = (data: T) => void;
 
 let socket: WebSocket | null = null;
+
+const pendingRequests = new Map<
+  string,
+  {
+    resolve: () => void;
+    reject: (error: Error) => void;
+    timer: ReturnType<typeof setTimeout>;
+  }
+>();
+const earlyInvitations = new Map<
+  string,
+  WsServerPayloads['GROUP_INVITATION']
+>();
+
+function rejectPendingRequests() {
+  for (const request of pendingRequests.values()) {
+    clearTimeout(request.timer);
+    request.reject(
+      new Error('Se perdió la conexión. Inténtalo de nuevo.'),
+    );
+  }
+  pendingRequests.clear();
+}
 
 const handlers = new Map<ServerEvent, Set<Handler<any>>>();
 
@@ -61,14 +88,16 @@ async function handleMessage(event: MessageEvent) {
   if (source !== socket) return;
 
   try {
-    const { type, data } = JSON.parse(event.data) as {
+    const { type, data, requestId } = JSON.parse(event.data) as {
+      requestId?: string;
       type: ServerEvent;
       data: unknown;
     };
 
     if (type === WS_SERVER_EVENTS.REQUEST_AUTH_TOKEN) {
       const accessToken = await tokenStorage.getAccessToken();
-      if (source !== socket || source.readyState !== WebSocket.OPEN) return;
+      if (source !== socket || source.readyState !== WebSocket.OPEN)
+        return;
       source.send(
         JSON.stringify({
           type: WS_CLIENT_EVENTS.AUTH_TOKEN_SENT,
@@ -81,12 +110,46 @@ async function handleMessage(event: MessageEvent) {
       return;
     }
 
+    if (
+      requestId &&
+      pendingRequests.has(requestId) &&
+      (type === WS_SERVER_EVENTS.GROUP_ACTION_CONFIRMED ||
+        type === WS_SERVER_EVENTS.ERROR)
+    ) {
+      const request = pendingRequests.get(requestId)!;
+      clearTimeout(request.timer);
+      pendingRequests.delete(requestId);
+      if (type === WS_SERVER_EVENTS.ERROR) {
+        const error = data as WsServerPayloads['ERROR'];
+        request.reject(
+          new Error(
+            error.error?.code || 'No se pudo completar la acción.',
+          ),
+        );
+      } else {
+        request.resolve();
+      }
+    }
+    if (type === WS_SERVER_EVENTS.GROUP_INVITATION_REJECTED) {
+      earlyInvitations.delete(
+        (data as { conversationId: string }).conversationId,
+      );
+    }
+    if (
+      type === WS_SERVER_EVENTS.GROUP_INVITATION &&
+      !handlers.get(type)?.size
+    ) {
+      const invitation = data as WsServerPayloads['GROUP_INVITATION'];
+      earlyInvitations.set(invitation.conversationId, invitation);
+    }
+
     // Auth failures arrive as a normal ERROR message, not a socket close —
     // the server keeps the connection open even when unauthenticated.
     if (type === WS_SERVER_EVENTS.ERROR) {
       // Guard against the case where the server sends a plain string
       // instead of the expected { success, error } shape (unhandled errors)
-      const errorData = data as WsServerPayloads[typeof WS_SERVER_EVENTS.ERROR];
+      const errorData =
+        data as WsServerPayloads[typeof WS_SERVER_EVENTS.ERROR];
       const message = errorData?.error?.message;
 
       if (message && AUTH_ERROR_MESSAGES.has(message)) {
@@ -171,7 +234,10 @@ function scheduleReconnect() {
 
   const delay = getReconnectDelay();
 
-  console.log(`[ws] reconnecting in ${delay}ms ` + `(attempt ${reconnectAttempts + 1})`);
+  console.log(
+    `[ws] reconnecting in ${delay}ms ` +
+      `(attempt ${reconnectAttempts + 1})`,
+  );
 
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
@@ -185,6 +251,7 @@ function scheduleReconnect() {
 function handleClose(event: CloseEvent) {
   // The OS can deliver an old close after a foreground connection has already replaced it.
   if (event.currentTarget !== socket) return;
+  rejectPendingRequests();
   console.log('[ws] CLOSE', {
     code: event.code,
     reason: event.reason,
@@ -230,7 +297,8 @@ export function connect(url: string) {
    */
   if (
     socket &&
-    (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)
+    (socket.readyState === WebSocket.OPEN ||
+      socket.readyState === WebSocket.CONNECTING)
   ) {
     console.warn('[ws] connection already active, ignoring connect()');
 
@@ -248,6 +316,8 @@ export function connect(url: string) {
 }
 
 export function disconnect() {
+  rejectPendingRequests();
+  earlyInvitations.clear();
   console.trace('[ws] DISCONNECT');
 
   /**
@@ -273,7 +343,10 @@ export function disconnect() {
   socket = null;
 }
 
-export function emit<E extends ClientEvent>(type: E, data: WsClientPayloads[E]) {
+export function emit<E extends ClientEvent>(
+  type: E,
+  data: WsClientPayloads[E],
+) {
   if (socket?.readyState === WebSocket.OPEN) {
     socket.send(
       JSON.stringify({
@@ -288,19 +361,69 @@ export function emit<E extends ClientEvent>(type: E, data: WsClientPayloads[E]) 
   console.warn('[ws] socket not open, event dropped:', type);
 }
 
-export function on<E extends ServerEvent>(type: E, handler: Handler<WsServerPayloads[E]>) {
+export function on<E extends ServerEvent>(
+  type: E,
+  handler: Handler<WsServerPayloads[E]>,
+) {
   if (!handlers.has(type)) {
     handlers.set(type, new Set());
   }
 
   handlers.get(type)!.add(handler);
+  if (
+    type === WS_SERVER_EVENTS.GROUP_INVITATION &&
+    earlyInvitations.size
+  ) {
+    const invitations = [...earlyInvitations.values()];
+    earlyInvitations.clear();
+    queueMicrotask(() => {
+      const subscribers = handlers.get(type);
+      if (!subscribers?.size) {
+        for (const invitation of invitations)
+          earlyInvitations.set(invitation.conversationId, invitation);
+        return;
+      }
+      for (const invitation of invitations) {
+        for (const subscriber of subscribers) subscriber(invitation);
+      }
+    });
+  }
 
   return () => {
     handlers.get(type)?.delete(handler);
   };
 }
 
+export function request<
+  E extends
+    | 'GROUP_INVITE_MEMBER'
+    | 'GROUP_INVITATION_ACCEPT'
+    | 'GROUP_INVITATION_REJECT',
+>(type: E, data: WsClientPayloads[E]): Promise<void> {
+  if (!socket || socket.readyState !== WebSocket.OPEN) {
+    return Promise.reject(
+      new Error('No hay conexión. Inténtalo de nuevo.'),
+    );
+  }
+  const requestId = randomUUID();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      pendingRequests.delete(requestId);
+      reject(new Error('No se recibió confirmación. Inténtalo de nuevo.'));
+    }, 15000);
+    pendingRequests.set(requestId, { resolve, reject, timer });
+    try {
+      socket!.send(JSON.stringify({ type, data, requestId }));
+    } catch (error) {
+      clearTimeout(timer);
+      pendingRequests.delete(requestId);
+      reject(error);
+    }
+  });
+}
+
 export const wsClient = {
+  request,
   connect,
   disconnect,
   emit,

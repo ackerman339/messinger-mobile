@@ -53,11 +53,13 @@ export const conversationService = {
     return response.data.result;
   },
 
-  getMessages: async (conversationId: string, params: PaginationParams) => {
-    const response = await httpClient.get<ApiResponse<Pagination<Message>>>(
-      '/conversation/messages',
-      { params: { ...params, conversationId } },
-    );
+  getMessages: async (
+    conversationId: string,
+    params: PaginationParams,
+  ) => {
+    const response = await httpClient.get<
+      ApiResponse<Pagination<Message>>
+    >('/conversation/messages', { params: { ...params, conversationId } });
 
     const result = response.data.result;
     // The API returns newest first; the chat displays each page oldest first.
@@ -77,12 +79,19 @@ export const conversationService = {
   },
 
   resetUnreadMessagesCount: async (data: ResetUnreadMessagesDto) => {
-    await httpClient.patch('/conversation/reset-unread-messages-count', data);
+    await httpClient.patch(
+      '/conversation/reset-unread-messages-count',
+      data,
+    );
   },
 
   // TODO: type responses
-  createGroup: (data: CreateGroupDto) =>
-    httpClient.post('/conversation/create-group', data),
+  createGroup: async (data: CreateGroupDto) => {
+    const response = await httpClient.post<
+      ApiResponse<Pick<Conversation, 'id' | 'name'>>
+    >('/conversation/create-group', data);
+    return response.data.result;
+  },
 
   leaveGroup: (data: LeaveGroupDto) =>
     httpClient.post('/conversation/leave-group', data),

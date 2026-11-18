@@ -1,5 +1,12 @@
 import * as Clipboard from 'expo-clipboard';
-import { Bell, Copy, LogOut, Menu, MessageCircle } from 'lucide-react-native';
+import {
+  Bell,
+  Copy,
+  LogOut,
+  Menu,
+  MessageCircle,
+  Users,
+} from 'lucide-react-native';
 import { useState, type ReactNode } from 'react';
 import { Platform } from 'react-native';
 import { explainFullScreenCallPermission } from '@/src/services/call-fullscreen-permission';
@@ -8,11 +15,13 @@ import { Button, Popover, Separator, Text, YStack } from 'tamagui';
 import { useUserContext } from '@/src/contexts/user-context';
 import { COLORS } from '@/src/lib/constants';
 import { NewMessageDialog } from './new-message-dialog';
+import { CreateGroupDialog } from './create-group-dialog';
 
 export function ChatMenu() {
   const { user, logout } = useUserContext();
   const [newMessageOpen, setNewMessageOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [newGroupOpen, setNewGroupOpen] = useState(false);
 
   async function handleCopyUserCode() {
     if (!user?.userCode) return;
@@ -67,9 +76,20 @@ export function ChatMenu() {
         >
           <YStack>
             <MenuItem
-              icon={<MessageCircle size={18} color={COLORS['text-primary']} />}
+              icon={
+                <MessageCircle size={18} color={COLORS['text-primary']} />
+              }
               label='Nuevo mensaje'
               onPress={handleNewMessage}
+            />
+
+            <MenuItem
+              icon={<Users size={18} color={COLORS['text-primary']} />}
+              label='Crear nuevo grupo'
+              onPress={() => {
+                setMenuOpen(false);
+                setNewGroupOpen(true);
+              }}
             />
 
             <MenuItem
@@ -84,7 +104,9 @@ export function ChatMenu() {
                 label='Permisos de llamadas'
                 onPress={() => {
                   setMenuOpen(false);
-                  void explainFullScreenCallPermission(true).catch(() => {});
+                  void explainFullScreenCallPermission(true).catch(
+                    () => {},
+                  );
                 }}
               />
             )}
@@ -101,6 +123,10 @@ export function ChatMenu() {
         </Popover.Content>
       </Popover>
 
+      <CreateGroupDialog
+        open={newGroupOpen}
+        onOpenChange={setNewGroupOpen}
+      />
       <NewMessageDialog
         open={newMessageOpen}
         onOpenChange={setNewMessageOpen}

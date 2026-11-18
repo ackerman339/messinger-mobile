@@ -23,6 +23,8 @@ export const WS_SERVER_EVENTS = {
   MESSAGE_SENT: 'MESSAGE_SENT',
   NEW_MESSAGE: 'NEW_MESSAGE',
   MESSAGE_STATUS_UPDATED: 'MESSAGE_STATUS_UPDATED',
+  GROUP_ACTION_CONFIRMED: 'GROUP_ACTION_CONFIRMED',
+  GROUP_INVITATION_REJECTED: 'GROUP_INVITATION_REJECTED',
   GROUP_INVITATION: 'GROUP_INVITATION',
   GROUP_MEMBER_JOINED: 'GROUP_MEMBER_JOINED',
   GROUP_MEMBER_LEFT: 'GROUP_MEMBER_LEFT',
@@ -54,6 +56,8 @@ export type WsErrorCode =
   | 'GROUP_INVITATION:ONLY_OWNER_CAN_INVITE'
   | 'GROUP_INVITATION:CANNOT_INVITE_YOURSELF'
   | 'GROUP_INVITATION:USER_ALREADY_MEMBER'
+  | `GROUP_INVITATION:${string}`
+  | `GROUP:${string}`
   // Fallback for non-BaseException errors (see note below)
   | 'UNHANDLED_WS_ERROR';
 
@@ -127,7 +131,10 @@ export interface WsServerPayloads extends CallServerPayloads {
     userId: string;
     status: MessageStatus;
   };
+  [WS_SERVER_EVENTS.GROUP_ACTION_CONFIRMED]: { event: string };
+  [WS_SERVER_EVENTS.GROUP_INVITATION_REJECTED]: { conversationId: string };
   [WS_SERVER_EVENTS.GROUP_INVITATION]: {
+    invitationId?: string;
     conversationId: string;
     groupName: string;
     invitedBy: string;

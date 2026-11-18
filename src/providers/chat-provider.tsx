@@ -6,10 +6,15 @@ import { ChatContext } from '@/src/contexts/chat-context';
 import { useUserContext } from '@/src/contexts/user-context';
 import { useMessageNotifications } from '@/src/hooks/use-message-notifications';
 import { useCursorPagination } from '@/src/hooks/use-cursor-pagination';
+import {
+  getAllConversations,
+  invitationConversation,
+  mergeGroup,
+} from '@/src/services/groups';
 import { conversationService } from '@/src/services/conversation';
 import { fileService } from '@/src/services/files';
 import { userService } from '@/src/services/user';
-import { WS_CLIENT_EVENTS } from '@/src/types/websocket';
+import { WS_CLIENT_EVENTS, WS_SERVER_EVENTS } from '@/src/types/websocket';
 
 import type { Conversation } from '@/src/types/conversation';
 import type {
@@ -22,9 +27,13 @@ import type { ReactNode } from 'react';
 export function ChatProvider({ children }: { children: ReactNode }) {
   const { user } = useUserContext();
 
-  const [conversations, setConversations] = useState<Map<string, Conversation>>(
-    new Map(),
-  );
+  const [conversations, setConversations] = useState<
+    Map<string, Conversation>
+  >(new Map());
+  const conversationsRef = useRef(conversations);
+  useEffect(() => {
+    conversationsRef.current = conversations;
+  }, [conversations]);
   const [activeConversationId, setActiveConversationId] = useState('');
   const [receiverId, setReceiverId] = useState('');
   const [isLoadingAttachment, setIsLoadingAttachment] = useState(false);
@@ -64,7 +73,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
         next.set(
           conversation.id,
-          existing
+          existing && !existing.invitation
             ? {
                 ...conversation,
                 ...existing,
@@ -78,16 +87,19 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   }, [items]);
 
   useEffect(() => {
-    const subscription = AppState.addEventListener('change', (nextState) => {
-      if (
-        appState.current.match(/inactive|background/) &&
-        nextState === 'active'
-      ) {
-        refresh();
-      }
+    const subscription = AppState.addEventListener(
+      'change',
+      (nextState) => {
+        if (
+          appState.current.match(/inactive|background/) &&
+          nextState === 'active'
+        ) {
+          refresh();
+        }
 
-      appState.current = nextState;
-    });
+        appState.current = nextState;
+      },
+    );
 
     return () => subscription.remove();
   }, [refresh]);
@@ -116,10 +128,6 @@ export function ChatProvider({ children }: { children: ReactNode }) {
    */
   function handleNewConversation(conversation: Conversation) {
     setConversations((previous) => {
-      if (previous.has(conversation.id)) {
-        return previous;
-      }
-
       const next = new Map(previous);
 
       next.set(conversation.id, conversation);
@@ -144,12 +152,165 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         messagesCursor: null,
         lastMessage: undefined,
         members: conversation.members.map((member) =>
-          member.userId === user?.id ? { ...member, unreadCount: 0 } : member,
+          member.userId === user?.id
+            ? { ...member, unreadCount: 0 }
+            : member,
         ),
       });
       return next;
     });
     setEmptiedConversation({ id: conversationId });
+  }
+
+  useEffect(() => {
+    const userId = user?.id;
+    if (!userId) return;
+    let disposed = false;
+    async function refreshGroup(id: string, joined = false) {
+      try {
+        const group = (await getAllConversations()).find(
+          (item) => item.id === id,
+        );
+        if (!group || disposed) return;
+        setConversations((previous) => {
+          if (!joined && !previous.has(id)) return previous;
+          const next = new Map(previous);
+          next.set(id, mergeGroup(previous.get(id), group));
+          return next;
+        });
+      } catch {
+        // Keep the current conversation; bootstrap refreshes it on the next login.
+      }
+    }
+    function remove(id: string) {
+      setConversations((previous) => {
+        const next = new Map(previous);
+        next.delete(id);
+        return next;
+      });
+      setActiveConversationId((current) =>
+        current === id ? '' : current,
+      );
+    }
+    function cacheGroupMessage(
+      message: import('@/src/types/conversation').Message,
+    ) {
+      const id = message.conversationId ?? message.conversation?.id;
+      if (!id) return;
+      setConversations((previous) => {
+        const group = previous.get(id);
+        if (!group || group.type !== 'GROUP' || group.isDeleted)
+          return previous;
+        const next = new Map(previous);
+        const messages = [message, ...group.messages].filter(
+          (item, index, all) =>
+            all.findIndex(
+              (other) =>
+                (other.id || other.messageId) ===
+                (item.id || item.messageId),
+            ) === index,
+        );
+        next.set(id, { ...group, messages, lastMessage: message });
+        return next;
+      });
+    }
+    const off = [
+      wsClient.on(WS_SERVER_EVENTS.MESSAGE_SENT, cacheGroupMessage),
+      wsClient.on(
+        WS_SERVER_EVENTS.GROUP_INVITATION_REJECTED,
+        ({ conversationId }) => remove(conversationId),
+      ),
+      wsClient.on(WS_SERVER_EVENTS.GROUP_INVITATION, (invitation) => {
+        setConversations((previous) => {
+          const existing = previous.get(invitation.conversationId);
+          if (existing && !existing.invitation) return previous;
+          const next = new Map(previous);
+          next.set(
+            invitation.conversationId,
+            invitationConversation(invitation),
+          );
+          return next;
+        });
+      }),
+      wsClient.on(
+        WS_SERVER_EVENTS.GROUP_MEMBER_JOINED,
+        ({ conversationId, userId: joinedUser }) => {
+          void refreshGroup(conversationId, joinedUser === userId);
+        },
+      ),
+      wsClient.on(
+        WS_SERVER_EVENTS.GROUP_MEMBER_LEFT,
+        ({ conversationId, userId: leftUser }) => {
+          if (leftUser === userId) remove(conversationId);
+          else void refreshGroup(conversationId);
+        },
+      ),
+      wsClient.on(
+        WS_SERVER_EVENTS.GROUP_MEMBER_REMOVED,
+        ({ conversationId, removedUserId }) => {
+          if (removedUserId === userId) remove(conversationId);
+          else void refreshGroup(conversationId);
+        },
+      ),
+      wsClient.on(
+        WS_SERVER_EVENTS.GROUP_OWNER_CHANGED,
+        ({ conversationId }) => {
+          void refreshGroup(conversationId);
+        },
+      ),
+      wsClient.on(WS_SERVER_EVENTS.GROUP_DELETED, ({ conversationId }) =>
+        handleGroupDeleted(conversationId),
+      ),
+      wsClient.on(WS_SERVER_EVENTS.NEW_MESSAGE, (message) => {
+        cacheGroupMessage(message);
+        if (
+          !message.conversation &&
+          message.conversationId &&
+          !conversationsRef.current.has(message.conversationId)
+        )
+          void refreshGroup(message.conversationId, true);
+      }),
+    ];
+    return () => {
+      disposed = true;
+      off.forEach((unsubscribe) => unsubscribe());
+    };
+  }, [user?.id]);
+
+  function handleGroupDeleted(id: string) {
+    setConversations((previous) => {
+      const group = previous.get(id);
+      if (!group || group.isDeleted) return previous;
+      const next = new Map(previous);
+      next.set(id, { ...group, isDeleted: true, invitation: undefined });
+      return next;
+    });
+  }
+
+  function handleGroupOwnerChanged(id: string, newOwnerId: string) {
+    setConversations((previous) => {
+      const group = previous.get(id);
+      if (!group || group.isDeleted) return previous;
+      const next = new Map(previous);
+      next.set(id, {
+        ...group,
+        groupRevision: (group.groupRevision ?? 0) + 1,
+        members: group.members.map((member) => ({
+          ...member,
+          role: member.userId === newOwnerId ? 'OWNER' : 'MEMBER',
+        })),
+      });
+      return next;
+    });
+  }
+
+  function handleRemoveConversation(id: string) {
+    setConversations((previous) => {
+      const next = new Map(previous);
+      next.delete(id);
+      return next;
+    });
+    setActiveConversationId((current) => (current === id ? '' : current));
   }
 
   function unSetCurrentConversation() {
@@ -213,6 +374,15 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     content: string,
     attachments: FileAttachment[] = [],
   ) {
+    const current =
+      activeConversation &&
+      conversationsRef.current.get(activeConversation.id);
+    if (
+      activeConversation?.invitation ||
+      activeConversation?.isDeleted ||
+      current?.isDeleted
+    )
+      return;
     if (activeConversation && activeConversation.type === 'GROUP') {
       wsClient.emit(WS_CLIENT_EVENTS.SEND_GROUP_MESSAGE, {
         content,
@@ -224,8 +394,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
     const targetReceiverId =
       receiverId ||
-      activeConversation?.members.find((member) => member.userId !== user?.id)
-        ?.userId;
+      activeConversation?.members.find(
+        (member) => member.userId !== user?.id,
+      )?.userId;
 
     if (!targetReceiverId) {
       return;
@@ -258,6 +429,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         isLoadingAttachment,
         emptiedConversation,
         handleEmptyChat,
+        handleRemoveConversation,
+        handleGroupDeleted,
+        handleGroupOwnerChanged,
         handleSendMessage,
         handleCurrentConversation,
         prepareAttachments,

@@ -53,6 +53,7 @@ test('history deletion removes the corresponding call cards immediately and pres
     },
   };
   function dependency(name) {
+    if (name === 'expo-clipboard') return { setStringAsync: async () => {} };
     if (name === 'react') return hooks;
     if (name === 'react-native')
       return { FlatList: 'FlatList', ActivityIndicator: 'ActivityIndicator' };

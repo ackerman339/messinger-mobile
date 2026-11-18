@@ -28,8 +28,8 @@ class Socket {
     this.readyState = 3;
     this.onclose({ currentTarget: this, code: 1000 });
   }
-  receive(type, data) {
-    return this.onmessage({ currentTarget: this, data: JSON.stringify({ type, data }) });
+  receive(type, data, requestId) {
+    return this.onmessage({ currentTarget: this, data: JSON.stringify({ type, data, requestId }) });
   }
 }
 globalThis.WebSocket = Socket;
@@ -135,4 +135,57 @@ test('a token lookup finishing after reconnect cannot authenticate the obsolete 
   await handling;
   assert.equal(previous.sent.length, 0);
   assert.deepEqual(invalidMessages, []);
+});
+
+test('group commands wait for matching persistence confirmations', async (t) => {
+  reset(t);
+  ws.connect(url);
+  let resolved = false;
+  const pending = ws.request('GROUP_INVITE_MEMBER', { conversationId: 'group', targetUserId: 'member' }).then(() => { resolved = true; });
+  const request = sockets[0].sent.at(-1);
+  assert.ok(request.requestId);
+  await sockets[0].receive('GROUP_ACTION_CONFIRMED', { event: 'GROUP_INVITE_MEMBER' }, 'unrelated');
+  assert.equal(resolved, false);
+  await sockets[0].receive('GROUP_ACTION_CONFIRMED', { event: 'GROUP_INVITE_MEMBER' }, request.requestId);
+  await pending;
+  assert.equal(resolved, true);
+});
+test('group errors reject their correlated command', async (t) => {
+  reset(t);
+  ws.connect(url);
+  const pending = ws.request('GROUP_INVITATION_ACCEPT', { conversationId: 'group' });
+  const rejection = assert.rejects(pending, /EXPIRED/);
+  await sockets[0].receive('ERROR', { error: { code: 'GROUP_INVITATION:EXPIRED' } }, sockets[0].sent.at(-1).requestId);
+  await rejection;
+});
+test('group commands reject immediately while offline and after disconnect', async (t) => {
+  reset(t);
+  await assert.rejects(ws.request('GROUP_INVITATION_REJECT', { conversationId: 'group' }), /conexión/);
+  ws.connect(url);
+  const pending = ws.request('GROUP_INVITATION_REJECT', { conversationId: 'group' });
+  const rejection = assert.rejects(pending, /conexión/);
+  ws.disconnect();
+  await rejection;
+});
+test('invitations received before the chat mounts replay once to its subscriber', async (t) => {
+  reset(t);
+  ws.connect(url);
+  const data = { conversationId: 'group', groupName: 'Equipo', invitedBy: 'owner' };
+  await sockets[0].receive('GROUP_INVITATION', data);
+  const received = [];
+  const off = ws.on('GROUP_INVITATION', (invitation) => received.push(invitation));
+  t.after(off);
+  await flush();
+  assert.deepEqual(received, [data]);
+});
+test('rejected invitations buffered before mount do not reappear', async (t) => {
+  reset(t);
+  ws.connect(url);
+  await sockets[0].receive('GROUP_INVITATION', { conversationId: 'group', groupName: 'Equipo' });
+  await sockets[0].receive('GROUP_INVITATION_REJECTED', { conversationId: 'group' });
+  const received = [];
+  const off = ws.on('GROUP_INVITATION', (invitation) => received.push(invitation));
+  t.after(off);
+  await flush();
+  assert.deepEqual(received, []);
 });

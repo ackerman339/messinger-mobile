@@ -5,6 +5,8 @@ export type Member = {
   username: string;
   lastSeenAt: string | null;
   unreadCount: number;
+  role?: "OWNER" | "MEMBER";
+  softDeletedAt?: string | null;
 };
 
 export type Message = {
@@ -25,6 +27,8 @@ export type Message = {
     | "CALL_END";
   attachments: FileAttachment[];
   conversationId?: string;
+  actorId?: string;
+  targetUserId?: string | null;
   metadata?: Record<string, unknown>;
 };
 
@@ -32,7 +36,11 @@ export type Conversation = {
   id: string;
   type: "PRIVATE" | "GROUP";
   name: string | null;
+  invitation?: { invitationId?: string; invitedBy: string };
   members: Member[];
+  knownMembers?: Member[];
+  isDeleted?: boolean;
+  groupRevision?: number;
   messages: Message[];
   messagesCursor: string | null;
   lastMessage: Message | undefined;

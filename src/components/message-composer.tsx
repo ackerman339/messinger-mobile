@@ -1,6 +1,6 @@
 import { ChevronRight, Smile } from 'lucide-react-native';
-import { useRef, useState } from 'react';
-import { Keyboard, Pressable, TextInput, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Keyboard, Pressable, Text, TextInput, View } from 'react-native';
 import { EmojiPicker } from 'rn-expo-emoji-picker';
 
 import { AttachmentMenu } from '@/src/components/attachment-menu';
@@ -30,9 +30,19 @@ export function MessageComposer() {
     end: 0,
   });
 
-  const { isRecording, startRecording, stopRecording, cancelRecording } = useVoiceRecorder();
+  const { isRecording, startRecording, stopRecording, cancelRecording } =
+    useVoiceRecorder();
 
-  const disabled = !activeConversation && !receiverId;
+  useEffect(() => {
+    if (activeConversation?.isDeleted && isRecording)
+      void cancelRecording().catch(() => {});
+    // Recorder cancellation is tied to the group's transition to read-only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeConversation?.isDeleted, isRecording]);
+
+  const disabled =
+    !!activeConversation?.isDeleted ||
+    (!activeConversation && !receiverId);
 
   function handleChange(value: string) {
     setMessage(value);
@@ -49,7 +59,8 @@ export function MessageComposer() {
   function handleEmojiSelected(emoji: string) {
     const { start, end } = selection;
 
-    const newMessage = message.slice(0, start) + emoji + message.slice(end);
+    const newMessage =
+      message.slice(0, start) + emoji + message.slice(end);
 
     const cursorPosition = start + emoji.length;
 
@@ -137,6 +148,26 @@ export function MessageComposer() {
     }
   }
 
+  if (activeConversation?.isDeleted)
+    return (
+      <View
+        accessibilityRole='text'
+        accessibilityLiveRegion='polite'
+        style={{
+          padding: 20,
+          backgroundColor: COLORS['bg-app'],
+          borderTopWidth: 1,
+          borderColor: COLORS.border,
+        }}
+      >
+        <Text
+          style={{ color: COLORS['text-secondary'], textAlign: 'center' }}
+        >
+          Este grupo fue eliminado
+        </Text>
+      </View>
+    );
+
   return (
     <View className='border-t border-border bg-bg-app px-3 py-2'>
       {isRecording ? (
@@ -197,7 +228,9 @@ export function MessageComposer() {
 
             {message ? (
               <Pressable
-                disabled={disabled || !message.trim() || isLoadingAttachment}
+                disabled={
+                  disabled || !message.trim() || isLoadingAttachment
+                }
                 className='h-11 w-11 items-center justify-center rounded-full bg-accent disabled:opacity-40'
                 onPress={handleSubmit}
               >
