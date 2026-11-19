@@ -1,3 +1,4 @@
+import { hasGroupCall } from '../group-calls/occupancy';
 import { getNativeIncomingCall } from './native-incoming-call';
 import { AppState, Platform } from 'react-native';
 import { createCallClient } from '../clients/call-client';
@@ -38,6 +39,10 @@ export async function respondToCall(
   expiresAt?: string,
 ) {
   callId = callId.toLowerCase();
+  if (action === 'accept' && hasGroupCall()) {
+    dismissIncomingCallNotification(callId);
+    return;
+  }
   if (action === 'accept' && responseIntents.get(callId) === 'reject') return;
   responseIntents.set(callId, action);
   if (responseIntents.size > 128) responseIntents.delete(responseIntents.keys().next().value!);
@@ -109,10 +114,10 @@ export async function receiveCallPush(push: CallPush) {
       callClient.inspectFromNotification(push.callId);
     return;
   }
-  if (responseIntents.has(push.callId)) return;
+  if (responseIntents.has(push.callId) || hasGroupCall()) return;
   if (!(await tokenStorage.getAccessToken()) || version !== authVersion) return;
-  if (hasActiveCall() && callClient.getSnapshot()?.callId !== push.callId) return;
-  if (!(await nativeCallService.ensureReady()) || version !== authVersion) return;
+  if (hasGroupCall() || (hasActiveCall() && callClient.getSnapshot()?.callId !== push.callId)) return;
+  if (!(await nativeCallService.ensureReady()) || version !== authVersion || hasGroupCall()) return;
   // A lock-screen activity launch contains only callId; retain the caller name already shown natively.
   const nativeIncoming = nativeCallService.getIncoming();
   if (!push.callerName && nativeIncoming?.callId === push.callId && nativeIncoming.callerName)

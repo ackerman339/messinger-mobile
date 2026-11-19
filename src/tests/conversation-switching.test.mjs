@@ -309,6 +309,10 @@ for (const desktop of mobile ? [false] : [false, true]) {
           ),
           '@/src/providers/user-provider': component('UserProvider'),
           '@/src/calls/componentes/call-panel': component('CallPanel'),
+          '@/src/group-calls/group-call-provider': component(
+            'GroupCallProvider',
+          ),
+          '@/src/group-calls/group-call-panel': component('GroupCallPanel'),
         }
       : {
           'react-responsive': { useMediaQuery: () => desktop },

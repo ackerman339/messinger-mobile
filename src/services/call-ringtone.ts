@@ -3,7 +3,7 @@ import type { CallView } from '../state/call-session';
 
 export type CallSound = 'incoming' | 'outgoing';
 const sources = {
-  incoming: require('../../assets/sounds/incoming-call.wav'),
+  incoming: require('../../assets/sounds/pulse_incoming_call.wav'),
   outgoing: require('../../assets/sounds/outgoing-call.wav'),
 };
 

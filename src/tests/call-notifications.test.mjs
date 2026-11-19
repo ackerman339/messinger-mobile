@@ -116,9 +116,11 @@ globalThis.__notificationTest = {
       calls.push(['respond', ...args]);
     },
     callClient: { getSnapshot: () => null },
+    respondToGroup: (call) => calls.push(['group-reject', call.id, call.conversationId]),
   },
 };
 const load = createNotificationLoader({
+  '/group-calls/api.ts': 'export const groupCallApi = { decline: async (call) => globalThis.__notificationTest.runtime.respondToGroup(call) };',
   '/token-storage.ts': 'export const tokenStorage = { getAccessToken: async () => "test-token" };',
   '/services/call-runtime.ts':
     'export const { bindNativeCallEvents, receiveCallPush, respondToCall, callClient } = globalThis.__notificationTest.runtime;',
@@ -425,4 +427,40 @@ test('a background push does not remove its fallback banner before Telecom reque
   await events.get('task')({ data: { data: { body: JSON.stringify(push) } } });
   assert.equal(calls.filter((call) => call[0] === 'push').length, 1);
   assert.equal(dismissed.length, 0);
+});
+
+test('native group notification actions preserve the conversation and bypass individual call signaling', async () => {
+  const { subscribeGroupCallAnswers } = await load('group-calls/group-call-notifications');
+  const groupId = '360bc328-cbf1-4a84-87bd-53680cc23aec';
+  const userId = '36d009cc-3f9a-413b-9031-a268c6572acb';
+  state.clearNotificationSession();
+  state.setNotificationUser(userId);
+  const actions = [];
+  const unsubscribe = subscribeGroupCallAnswers(userId, (action) => actions.push(action));
+  const makeGroupResponse = (callId, actionIdentifier) => ({
+    actionIdentifier,
+    data: {
+      type: 'group-call-incoming',
+      callId,
+      conversationId: groupId,
+      groupName: 'Equipo',
+      media: 'video',
+      expiresAt: new Date(Date.now() + 30_000).toISOString(),
+      recipientId: userId,
+    },
+  });
+  try {
+    calls.length = 0;
+    const acceptId = '67126a6f-e360-41b9-8dbf-2987fe60b946';
+    const rejectId = 'e6a391a8-e260-46cc-a41f-e03eeb769333';
+    assert.equal(await tasks.handleCallNotificationResponse(makeGroupResponse(acceptId, 'accept')), true);
+    assert.equal(await tasks.handleCallNotificationResponse(makeGroupResponse(rejectId, 'reject')), true);
+    assert.deepEqual(actions.map(({ id, conversationId, action }) => ({ id, conversationId, action })), [
+      { id: acceptId, conversationId: groupId, action: 'accept' },
+    ]);
+    assert.deepEqual(calls, [['group-reject', rejectId, groupId]]);
+  } finally {
+    unsubscribe();
+    state.clearNotificationSession();
+  }
 });

@@ -1,3 +1,5 @@
+import { GroupCallProvider } from '@/src/group-calls/group-call-provider';
+import { GroupCallPanel } from '@/src/group-calls/group-call-panel';
 import { KeyboardAvoidingView, Platform } from 'react-native';
 import Animated, {
   useAnimatedStyle,
@@ -74,13 +76,16 @@ export default function ChatPage() {
     <UserProvider>
       <ChatProvider>
         <CallProvider>
-          <AttachmentProvider>
-            <PortalProvider>
-              <ChatContent />
-              <CallPanel />
-              <PortalHost name='chat' />
-            </PortalProvider>
-          </AttachmentProvider>
+          <GroupCallProvider>
+            <AttachmentProvider>
+              <PortalProvider>
+                <ChatContent />
+                <CallPanel />
+                <GroupCallPanel />
+                <PortalHost name='chat' />
+              </PortalProvider>
+            </AttachmentProvider>
+          </GroupCallProvider>
         </CallProvider>
       </ChatProvider>
     </UserProvider>

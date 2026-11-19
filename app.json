@@ -2,12 +2,12 @@
   "expo": {
     "name": "Pulse",
     "slug": "messinger-mobile",
-    "version": "1.4.0",
+    "version": "1.5.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "messingermobile",
     "userInterfaceStyle": "automatic",
-    "runtimeVersion": "1.4.0",
+    "runtimeVersion": "1.5.0",
     "updates": {
       "enabled": true,
       "url": "https://u.expo.dev/c96e488c-1f41-481e-be73-c97239e168b6",
@@ -97,9 +97,12 @@
         "expo-notifications",
         {
           "defaultChannel": "messages",
+          "sounds": ["./assets/sounds/pulse_incoming_call.wav"],
+          "enableBackgroundRemoteNotifications": true,
           "color": "#E6F4FE"
         }
       ],
+      "@livekit/react-native-expo-plugin",
       "@config-plugins/react-native-webrtc",
       "./plugins/with-android-calls"
     ],

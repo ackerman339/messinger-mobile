@@ -24,7 +24,9 @@ export type Message = {
     | "MEMBER_REMOVED"
     | "OWNERSHIP_TRANSFERRED"
     | "CALL_ACCEPTED"
-    | "CALL_END";
+    | "CALL_END"
+    | "GROUP_CALL_STARTED"
+    | "GROUP_CALL_ENDED";
   attachments: FileAttachment[];
   conversationId?: string;
   actorId?: string;
@@ -48,12 +50,16 @@ export type Conversation = {
   updatedAt: Date;
 };
 
-export type CallConversationEvent = Pick<
+export type ConversationEvent = Pick<
   Message,
   "id" | "createdAt" | "metadata"
 > & {
   conversationId: string;
-  type: "CALL_ACCEPTED" | "CALL_END";
+  type: "CALL_ACCEPTED" | "CALL_END" | "GROUP_CALL_STARTED" | "GROUP_CALL_ENDED";
   actorId: string;
   targetUserId: string | null;
+};
+
+export type CallConversationEvent = ConversationEvent & {
+  type: "CALL_ACCEPTED" | "CALL_END";
 };

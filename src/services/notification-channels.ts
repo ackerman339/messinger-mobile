@@ -45,15 +45,15 @@ export function configureNotificationChannels() {
           contentType: Notifications.AndroidAudioContentType.SONIFICATION,
         },
       });
-      await Notifications.setNotificationCategoryAsync(INCOMING_CALL_CATEGORY, [
+    }
+    await Notifications.setNotificationCategoryAsync(INCOMING_CALL_CATEGORY, [
         {
           identifier: 'reject',
           buttonTitle: 'Rechazar',
           options: { opensAppToForeground: false, isDestructive: true },
         },
         { identifier: 'accept', buttonTitle: 'Aceptar', options: { opensAppToForeground: true } },
-      ]);
-    }
+    ]);
   })().catch((error) => {
     setup = undefined;
     throw error;

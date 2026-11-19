@@ -54,9 +54,7 @@ class CallIncomingActivity : Activity() {
     layout.addView(name, LinearLayout.LayoutParams(-1, -2))
     kind =
       TextView(this).apply {
-        text =
-          if (CallService.current()?.media == "video") "Videollamada entrante"
-          else "Llamada entrante"
+        text = CallService.current()?.incomingDescription() ?: "Llamada entrante"
         textSize = 18f
         gravity = Gravity.CENTER
         setPadding(0, 24, 0, 80)
@@ -90,7 +88,7 @@ class CallIncomingActivity : Activity() {
       return
     }
     name.text = call.name
-    kind.text = if (call.media == "video") "Videollamada entrante" else "Llamada entrante"
+    kind.text = call.incomingDescription()
   }
 
   override fun onNewIntent(value: android.content.Intent) {

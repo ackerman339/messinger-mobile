@@ -1,3 +1,4 @@
+import { GroupCallButtons } from '@/src/group-calls/group-call-controls';
 import { HeaderButton } from './header-button';
 import { ArrowLeft } from 'lucide-react-native';
 import { useLayoutEffect, useState } from 'react';
@@ -151,6 +152,7 @@ export function ChatHeader() {
               participantId={privateConversationMember.userId}
             />
           )}
+        <GroupCallButtons />
         {!activeConversation.invitation && (
           <HeaderButton key={activeConversation.id} />
         )}

@@ -1,7 +1,7 @@
 {
   "name": "messinger-mobile",
   "main": "index.js",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "scripts": {
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
@@ -16,6 +16,9 @@
     "@babel/runtime": "^7.28.4",
     "@config-plugins/react-native-webrtc": "13.0.0",
     "@expo/vector-icons": "^15.0.3",
+    "@livekit/react-native": "3.2.0",
+    "@livekit/react-native-expo-plugin": "1.2.0",
+    "@livekit/react-native-webrtc": "150.2.0",
     "@react-navigation/bottom-tabs": "^7.4.0",
     "@react-navigation/elements": "^2.6.3",
     "@react-navigation/native": "^7.1.8",
@@ -52,6 +55,7 @@
     "expo-updates": "~29.0.20",
     "expo-video": "~3.0.16",
     "expo-web-browser": "~15.0.11",
+    "livekit-client": "2.24.1",
     "lucide-react-native": "^1.31.0",
     "nativewind": "^4.2.6",
     "react": "19.1.0",

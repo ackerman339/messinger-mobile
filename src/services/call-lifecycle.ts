@@ -1,3 +1,4 @@
+import { hasGroupCall } from '../group-calls/occupancy';
 import { wsClient } from '@/src/clients/websocket-client';
 import { randomUUID } from 'expo-crypto';
 import type { CallView, CallSession as Session } from '../state/call-session';
@@ -14,6 +15,7 @@ export function createCallLifecycle(store: CallStore) {
     callerName?: string,
     conversationId?: string,
   ) {
+    if (hasGroupCall()) return;
     const current = store.getSession();
     if (current && !current.closed) {
       return;
@@ -121,6 +123,7 @@ export function createCallLifecycle(store: CallStore) {
   }
 
   function answerFromNotification(callId: string, expiresAt?: string) {
+    if (hasGroupCall()) return;
     respondFromNotification(
       callId,
       'accept',
@@ -137,6 +140,7 @@ export function createCallLifecycle(store: CallStore) {
   }
 
   async function accept() {
+    if (hasGroupCall()) return;
     const session = store.getSession();
     if (
       session &&

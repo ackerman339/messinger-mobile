@@ -25,7 +25,7 @@ import { WS_SERVER_EVENTS } from '@/src/types/websocket';
 import { ConversationEventMessage } from './conversation-event-message';
 
 import type {
-  CallConversationEvent,
+  ConversationEvent,
   Message,
 } from '@/src/types/conversation';
 import type { ListRenderItem } from 'react-native';
@@ -173,7 +173,7 @@ export function MessageList() {
     function appendCallEvent({
       conversationEvent,
     }: {
-      conversationEvent?: CallConversationEvent;
+      conversationEvent?: ConversationEvent;
     }) {
       if (
         !live ||
@@ -215,6 +215,8 @@ export function MessageList() {
       },
     );
     const offEnd = wsClient.on('CALL_END', appendCallEvent);
+    const offGroupStarted = wsClient.on('GROUP_CALL_STARTED', appendCallEvent);
+    const offGroupEnded = wsClient.on('GROUP_CALL_ENDED', appendCallEvent);
     const offReject = wsClient.on('CALL_REJECT', appendCallEvent);
 
     return () => {
@@ -222,6 +224,8 @@ export function MessageList() {
       unsubscribeNewMessage();
       unsubscribeSentMessage();
       offEnd();
+      offGroupStarted();
+      offGroupEnded();
       offHistoryDeleted();
       offReject();
     };
@@ -542,6 +546,17 @@ function MessageBubble({
   }
 
   const isOwn = message.senderId === user?.id;
+  const senderName =
+    activeConversation?.type === 'GROUP'
+      ? activeConversation.members
+          .find((member) => member.userId === message.senderId)
+          ?.username?.trim() ||
+        activeConversation.knownMembers
+          ?.find((member) => member.userId === message.senderId)
+          ?.username?.trim() ||
+        (isOwn ? user?.username?.trim() : undefined) ||
+        'Miembro del grupo'
+      : null;
   const isLink = /^https?:\/\/\S+$/.test(message.content.trim());
   const messageId = message.messageId || message.id;
 
@@ -572,6 +587,11 @@ function MessageBubble({
           borderWidth={selected ? 2 : 0}
           borderColor={selected ? '$accent' : 'transparent'}
         >
+          {senderName && (
+            <Text mb='$1' fontSize='$2' fontWeight='600' color='$accent' numberOfLines={1}>
+              {senderName}
+            </Text>
+          )}
           <Text
             fontSize='$3'
             lineHeight={20}

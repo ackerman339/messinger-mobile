@@ -23,7 +23,15 @@ internal data class CallInfo(
   val name: String,
   val deadline: Long,
   val incoming: Boolean = true,
+  val groupConversationId: String? = null,
 ) {
+  fun incomingDescription() =
+    if (groupConversationId != null) {
+      if (media == "video") "Videollamada grupal entrante" else "Llamada grupal entrante"
+    } else {
+      if (media == "video") "Videollamada entrante" else "Llamada de voz entrante"
+    }
+
   fun intent(context: Context, action: String) =
     Intent(context, CallService::class.java)
       .setAction(action)
@@ -33,6 +41,7 @@ internal data class CallInfo(
       .putExtra("name", name)
       .putExtra("deadline", deadline)
       .putExtra("incoming", incoming)
+      .putExtra("groupConversationId", groupConversationId)
 
   companion object {
     fun from(intent: Intent) =
@@ -43,6 +52,7 @@ internal data class CallInfo(
         intent.getStringExtra("name") ?: "Contacto",
         intent.getLongExtra("deadline", 0),
         intent.getBooleanExtra("incoming", true),
+        intent.getStringExtra("groupConversationId"),
       )
   }
 }
@@ -81,11 +91,14 @@ internal object CallIncomingNotification {
     val content =
       NotificationContent.Builder()
         .setTitle(call.name)
-        .setText(if (call.media == "video") "Videollamada entrante" else "Llamada entrante")
+        .setText(call.incomingDescription())
         .setBody(
           org.json
             .JSONObject()
-            .put("type", "call-incoming")
+            .put("type", if (call.groupConversationId == null) "call-incoming" else "group-call-incoming")
+            .put("conversationId", call.groupConversationId)
+            .put("groupName", call.name)
+            .put("recipientId", CallPushSession.user(context))
             .put("callId", call.id)
             .put("callerId", call.caller)
             .put("callerName", call.name)
@@ -144,7 +157,7 @@ internal object CallIncomingNotification {
         .setContentTitle(call.name)
         .setContentText(
           if (serviceFailed) "Llamada entrante: abre pulse para atender"
-          else if (call.media == "video") "Videollamada entrante" else "Llamada de voz entrante"
+          else call.incomingDescription()
         )
         .setCategory(NotificationCompat.CATEGORY_CALL)
         .setPriority(NotificationCompat.PRIORITY_MAX)

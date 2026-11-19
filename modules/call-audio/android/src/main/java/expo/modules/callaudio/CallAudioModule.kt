@@ -88,6 +88,19 @@ class CallAudioModule : Module() {
         CallService.incoming(context(), CallInfo(id, caller, media, name, expires.toLong()))
       }
       .runOnQueue(Queues.MAIN)
+    AsyncFunction("presentIncomingGroupCall") {
+        id: String,
+        conversationId: String,
+        caller: String,
+        media: String,
+        name: String,
+        expires: Double ->
+        CallService.incoming(
+          context(),
+          CallInfo(id, caller, media, name, expires.toLong(), groupConversationId = conversationId),
+        )
+      }
+      .runOnQueue(Queues.MAIN)
     AsyncFunction("presentOutgoingCall") {
         id: String,
         caller: String,
@@ -106,7 +119,9 @@ class CallAudioModule : Module() {
         ?.takeIf { it.incoming }
         ?.let {
           mapOf(
-            "type" to "call-incoming",
+            "type" to if (it.groupConversationId == null) "call-incoming" else "group-call-incoming",
+            "conversationId" to it.groupConversationId,
+            "groupName" to it.name,
             "callId" to it.id,
             "callerId" to it.caller,
             "media" to it.media,

@@ -81,7 +81,7 @@ for (const sound of ['incoming', 'outgoing']) {
     await reset(t);
     const stop = createCallRingtone(sound);
     const player = players[0];
-    assert.ok(player.source.endsWith(`${sound}-call.wav`));
+    assert.ok(player.source.endsWith(sound === 'incoming' ? 'pulse_incoming_call.wav' : 'outgoing-call.wav'));
     assert.equal(player.loop, true);
     assert.equal(player.volume, sound === 'incoming' ? 0.6 : 0.3);
     assert.equal(player.options.updateInterval, 250);

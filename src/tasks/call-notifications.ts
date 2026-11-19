@@ -8,6 +8,10 @@ import { configureNotificationChannels } from '../services/notification-channels
 import { parseMessageNotification, readNotificationData } from '../services/notification-data';
 import { installNotificationPresentation } from '../services/notification-presentation';
 import { claimMessageNotification } from '../services/notification-state';
+import { parseGroupCallPush } from '../group-calls/group-call-push';
+import {
+  dismissGroupCallNotification, handleGroupCallNotificationAction, showGroupCallNotification,
+} from '../group-calls/group-call-notifications';
 import { isTerminal } from '../types/call';
 
 import {
@@ -27,8 +31,11 @@ installNotificationPresentation();
 export async function handleCallNotificationResponse(
   response: NotificationTaskPayload | Notifications.NotificationResponse,
 ) {
+  if (!('actionIdentifier' in response)) return false;
+  const groupCall = parseGroupCallPush(response);
+  if (groupCall) return handleGroupCallNotificationAction(groupCall, response.actionIdentifier);
   const push = parseCallPush(response);
-  if (!push || !('actionIdentifier' in response)) return false;
+  if (!push) return false;
   if (push.type === 'call-missed' || isExpiredCallPush(push)) {
     dismissIncomingCallNotification(push.callId);
     await dismissCallPushNotification(response);
@@ -77,11 +84,11 @@ async function waitForRejection(callId: string) {
 const runNotificationTask: Parameters<
   typeof TaskManager.defineTask<NotificationTaskPayload>
 >[1] = async ({ data, error }) => {
-  if (error || !data || typeof data !== 'object' || Platform.OS !== 'android') return;
+  if (error || !data || typeof data !== 'object' || (Platform.OS !== 'android' && Platform.OS !== 'ios')) return;
   if ('actionIdentifier' in data) {
     // Accept/body taps launch the app. Only its foreground runtime may claim the WebRTC call.
     // Keep the stored response for getLastNotificationResponseAsync during a cold launch.
-    if (data.actionIdentifier !== 'reject') return;
+    if (data.actionIdentifier !== 'reject' || (Platform.OS === 'ios' && !parseGroupCallPush(data))) return;
     if (await handleCallNotificationResponse(data)) {
       if (data.actionIdentifier === 'reject') {
         const call = parseCallPush(data);
@@ -92,6 +99,7 @@ const runNotificationTask: Parameters<
     return;
   }
   if (readNotificationData(data)?.localNotification) return;
+  if (await handleGroupPush(data) || Platform.OS !== 'android') return;
   const push = parseCallPush(data);
   if (push) {
     await receiveCallPush(push);
@@ -103,6 +111,14 @@ const runNotificationTask: Parameters<
     if (message) claimMessageNotification(message.messageId, 'remote');
   }
 };
+async function handleGroupPush(payload: unknown) {
+  const group = parseGroupCallPush(payload);
+  if (!group) return false;
+  if (group.type === 'group-call-incoming') await showGroupCallNotification(group);
+  else dismissGroupCallNotification(group.id);
+  return true;
+}
+
 TaskManager.defineTask<NotificationTaskPayload>(taskName, runNotificationTask);
 // An upgrade can receive a push before the first foreground launch migrates its registration.
 TaskManager.defineTask<NotificationTaskPayload>(legacyTaskName, runNotificationTask);
@@ -113,7 +129,7 @@ export async function registerCallNotificationTask() {
   if (Platform.OS === 'android' && (await TaskManager.isTaskRegisteredAsync(legacyTaskName))) {
     await Notifications.unregisterTaskAsync(legacyTaskName);
   }
-  if (Platform.OS === 'android' && !(await TaskManager.isTaskRegisteredAsync(taskName))) {
+  if ((Platform.OS === 'android' || Platform.OS === 'ios') && !(await TaskManager.isTaskRegisteredAsync(taskName))) {
     await Notifications.registerTaskAsync(taskName);
   }
 }
@@ -122,6 +138,10 @@ export function subscribeCallNotifications() {
   let active = true;
   const foreground = Notifications.addNotificationReceivedListener((notification) => {
     if (readNotificationData(notification)?.localNotification) return;
+    if (parseGroupCallPush(notification)) {
+      void handleGroupPush(notification).catch(() => {});
+      return;
+    }
     const push = parseCallPush(notification);
     if (push) void receiveCallPush(push).catch(() => {});
   });

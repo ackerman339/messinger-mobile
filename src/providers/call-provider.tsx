@@ -1,3 +1,4 @@
+import { hasGroupCall } from '../group-calls/occupancy';
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, AppState } from 'react-native';
@@ -64,13 +65,14 @@ export function CallProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (loading) return;
     setCallUser(hasNativeCalling() ? userId : undefined);
-    if (!userId || !hasNativeCalling()) return;
+    if (!userId) return;
+    const notifications = subscribeCallNotifications();
+    if (!hasNativeCalling()) return notifications;
     void nativeCallService.ensureReady().then(() => {
       nativeCallService.sync(callClient.getSnapshot());
       const incoming = nativeCallService.getIncoming();
       if (incoming) void receiveCallPush(incoming).catch(() => {});
     });
-    const notifications = subscribeCallNotifications();
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active')
         void nativeCallService
@@ -88,7 +90,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
     media: CallMedia,
     conversationId?: string,
   ) {
-    if (startInFlight.current || hasActiveCall() || !userId) return;
+    if (startInFlight.current || hasActiveCall() || hasGroupCall() || !userId) return;
     if (!hasNativeCalling()) {
       Alert.alert(
         'Llamadas de Android',

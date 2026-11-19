@@ -1,3 +1,4 @@
+import type { GroupCallNotice } from '../group-calls/types';
 import type { CallClientPayloads, CallServerPayloads } from './call';
 import { CALL_CLIENT_EVENTS, CALL_SERVER_EVENTS } from './call';
 import type { Message } from './conversation';
@@ -31,6 +32,9 @@ export const WS_SERVER_EVENTS = {
   GROUP_MEMBER_REMOVED: 'GROUP_MEMBER_REMOVED',
   GROUP_OWNER_CHANGED: 'GROUP_OWNER_CHANGED',
   GROUP_DELETED: 'GROUP_DELETED',
+  GROUP_CALL_STARTED: 'GROUP_CALL_STARTED',
+  GROUP_CALL_ENDED: 'GROUP_CALL_ENDED',
+  GROUP_CALL_RING_CLOSED: 'GROUP_CALL_RING_CLOSED',
   PRESENCE_ONLINE: 'PRESENCE_ONLINE',
   PRESENCE_OFFLINE: 'PRESENCE_OFFLINE',
   TYPING_STARTED: 'TYPING_STARTED',
@@ -157,6 +161,9 @@ export interface WsServerPayloads extends CallServerPayloads {
     previousOwnerId: string;
     newOwnerId: string;
   };
+  [WS_SERVER_EVENTS.GROUP_CALL_STARTED]: GroupCallNotice;
+  [WS_SERVER_EVENTS.GROUP_CALL_ENDED]: GroupCallNotice;
+  [WS_SERVER_EVENTS.GROUP_CALL_RING_CLOSED]: { callId: string; conversationId: string };
   [WS_SERVER_EVENTS.GROUP_DELETED]: {
     conversationId: string;
   };

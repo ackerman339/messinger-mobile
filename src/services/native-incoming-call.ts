@@ -10,6 +10,10 @@ interface NativeIncomingCall {
     name: string,
     expires: number,
   ): Promise<void>;
+  presentIncomingGroupCall?(
+    id: string, conversationId: string, caller: string, media: string, name: string, expires: number,
+  ): Promise<void>;
+  finishCallPresentation?(id: string, remote: boolean): void;
   dismissIncomingCall(id: string): void;
   clearCalls?(): void;
 }

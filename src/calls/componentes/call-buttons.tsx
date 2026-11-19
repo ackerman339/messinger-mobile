@@ -1,3 +1,4 @@
+import { useGroupCall } from '../../group-calls/group-call-context';
 import { useChatContext } from '../../contexts/chat-context';
 import { Phone, Video } from 'lucide-react-native';
 import { Platform, Pressable, View } from 'react-native';
@@ -8,9 +9,10 @@ import { isTerminal } from '../../types/call';
 export function CallButtons({ participantId }: { participantId: string }) {
   const { activeConversation } = useChatContext();
   const { call, starting, handleStartCall } = useCallContext();
+  const { busy: groupBusy } = useGroupCall();
   if (Platform.OS !== 'android') return null;
   const busy =
-    starting ||
+    groupBusy || starting ||
     (!!call && (call.status === 'requesting' || !isTerminal(call.status)));
   return (
     <View className='flex-row flex gap-2 justify-end'>

@@ -356,6 +356,10 @@ test('pending invitations never mount message history or composer on the chat sc
     '@/src/providers/attachment-provider': component('AttachmentProvider'),
     '@/src/providers/user-provider': component('UserProvider'),
     '@/src/calls/componentes/call-panel': component('CallPanel'),
+    '@/src/group-calls/group-call-provider': component(
+      'GroupCallProvider',
+    ),
+    '@/src/group-calls/group-call-panel': component('GroupCallPanel'),
   }).default;
   const content = nodes(ChatPage()).find(
     (node) => node.type?.name === 'ChatContent',

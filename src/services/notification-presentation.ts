@@ -2,6 +2,7 @@ import * as Notifications from 'expo-notifications';
 import { AppState, Platform } from 'react-native';
 import { hasNativeCalling } from '../rtc/native-webrtc';
 import { tokenStorage } from '../token-storage';
+import { groupPushExpired, parseGroupCallPush } from '../group-calls/group-call-push';
 import { isExpiredCallPush, parseCallPush } from './call-push';
 import { parseMessageNotification, readNotificationData } from './notification-data';
 import {
@@ -34,6 +35,12 @@ export function installNotificationPresentation() {
       )
         return hidden;
       const data = readNotificationData(notification);
+      const groupCall = parseGroupCallPush(notification);
+      if (groupCall?.type === 'group-call-closed') return hidden;
+      if (groupCall?.type === 'group-call-incoming' && (
+        groupPushExpired(groupCall) || isCallNotificationBlocked(groupCall.id) ||
+        (AppState.currentState === 'active' && data?.localNotification !== 'group-call')
+      )) return hidden;
       const call = parseCallPush(notification);
       if (call?.type === 'call-incoming') {
         if (isExpiredCallPush(call) || isCallNotificationBlocked(call.callId)) return hidden;

@@ -251,7 +251,8 @@ class CallService : Service() {
       // These callbacks originate from a user tap, never from a platform presentation failure.
       val service = running ?: return
       if (service.call?.id != id || service.phase != Phase.RINGING) return
-      if (action == "reject") service.end() else service.answer(id, PENDING_ANSWER)
+      if (action == "reject" || service.call?.groupConversationId != null) service.end()
+      else service.answer(id, PENDING_ANSWER)
     }
 
     fun finish(id: String, actor: String, force: Boolean = false) {

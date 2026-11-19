@@ -18,7 +18,12 @@ function groupEventText(message: EventMessage, members: EventMember[]) {
   const id = message.targetUserId || message.actorId;
   const name = members.find((member) => member.userId === id)?.username;
   const target = name || 'Un miembro';
+  const call = message.metadata?.media === 'video' ? 'videollamada grupal' : 'llamada grupal';
   switch (message.type) {
+    case 'GROUP_CALL_STARTED':
+      return `${target} inició una ${call}`;
+    case 'GROUP_CALL_ENDED':
+      return `Finalizó la ${call}`;
     case 'GROUP_CREATED':
       return name ? `${name} creó el grupo` : 'Grupo creado';
     case 'MEMBER_JOINED':
