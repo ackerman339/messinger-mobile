@@ -41,9 +41,38 @@ class CallIncomingNotificationTest {
   @After
   fun cleanup() {
     controller?.destroy()
+    CallWindowState.clearGroupAnswer()
     CallTonePlayer.stopBeforeMedia()
     context.getSystemService(NotificationManager::class.java).cancelAll()
     shadowOf(Looper.getMainLooper()).idle()
+  }
+
+  @Test
+  fun acceptsGroupCallOverKeyguardUntilTheReactPanelCloses() {
+    val call =
+      CallInfo(
+        UUID.randomUUID().toString(),
+        "caller",
+        "audio",
+        "Grupo",
+        System.currentTimeMillis() + 60_000,
+        groupConversationId = "group",
+      )
+    launch(call)
+
+    CallService.notificationAction(call.id, "accept")
+    assertNull(CallService.current())
+    assertEquals(ShadowMediaPlayer.State.END, shadowOf(players.single()).state)
+    assertTrue(CallWindowState.shouldShowWhenLocked())
+
+    val main = shadowOf(Looper.getMainLooper())
+    CallWindowState.panel(call.id, true)
+    main.idleFor(Duration.ofSeconds(31))
+    assertTrue(CallWindowState.shouldShowWhenLocked())
+
+    CallWindowState.panel(call.id, false)
+    main.idle()
+    assertFalse(CallWindowState.shouldShowWhenLocked())
   }
 
   private fun launch(call: CallInfo): CallService {

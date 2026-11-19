@@ -250,9 +250,16 @@ class CallService : Service() {
     fun notificationAction(id: String, action: String) {
       // These callbacks originate from a user tap, never from a platform presentation failure.
       val service = running ?: return
-      if (service.call?.id != id || service.phase != Phase.RINGING) return
-      if (action == "reject" || service.call?.groupConversationId != null) service.end()
-      else service.answer(id, PENDING_ANSWER)
+      val call = service.call ?: return
+      if (call.id != id || service.phase != Phase.RINGING) return
+      if (action == "reject") {
+        service.end()
+      } else if (call.groupConversationId != null) {
+        if (call.deadline > System.currentTimeMillis()) CallWindowState.prepareGroupAnswer(id)
+        service.end()
+      } else {
+        service.answer(id, PENDING_ANSWER)
+      }
     }
 
     fun finish(id: String, actor: String, force: Boolean = false) {
@@ -292,6 +299,7 @@ class CallService : Service() {
       main.post {
         epoch++
         pendingOwners.clear()
+        CallWindowState.clearGroupAnswer()
         running?.end()
       }
     }

@@ -46,6 +46,7 @@ function load(file, dependencies = {}) {
       )
         return new Proxy({}, { get: (_, key) => key });
       if (name === './group-dialog') return { GroupDialog: 'GroupDialog' };
+      if (name === './group-member-option') return { GroupMemberOption: 'GroupMemberOption' };
       if (name.includes('emoji-picker'))
         return {
           __esModule: true,
@@ -218,6 +219,11 @@ test('transfer lists only eligible members and changes ownership after success',
       list.props.data.map((member) => member.userId),
       ['bob'],
     );
+    assert.ok(nodes(f.tree).some((node) => node.props?.placeholder === 'Buscar personas'));
+    const option = list.props.renderItem({ item: list.props.data[0] });
+    assert.equal(option.type, 'GroupMemberOption');
+    assert.equal(option.props.single, true);
+    assert.equal(option.props.checked, true);
   } else {
     assert.ok(text(f.tree).includes('Roberto'));
     assert.ok(!text(f.tree).includes('Exmiembro'));

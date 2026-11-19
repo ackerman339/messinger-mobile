@@ -1,7 +1,6 @@
-import { Check } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable } from 'react-native';
-import { Button, Input, Text, XStack, YStack } from 'tamagui';
+import { ActivityIndicator, FlatList } from 'react-native';
+import { Button, Input, Text } from 'tamagui';
 import { useUserContext } from '@/src/contexts/user-context';
 import { COLORS } from '@/src/lib/constants';
 import {
@@ -12,6 +11,7 @@ import {
 } from '@/src/services/groups';
 import type { Conversation, Member } from '@/src/types/conversation';
 import { GroupDialog } from './group-dialog';
+import { GroupMemberOption } from './group-member-option';
 
 export function InviteGroupDialog({
   group,
@@ -119,11 +119,13 @@ export function InviteGroupDialog({
             </Text>
           }
           renderItem={({ item }) => {
-            const checked =
-              selected.includes(item.userId) || sent.includes(item.userId);
-            const disabled = busy || sent.includes(item.userId);
+            const invited = sent.includes(item.userId);
             return (
-              <Pressable
+              <GroupMemberOption
+                name={item.username}
+                checked={invited || selected.includes(item.userId)}
+                disabled={busy || invited}
+                status={invited ? 'Enviada' : undefined}
                 onPress={() =>
                   setSelected((previous) =>
                     previous.includes(item.userId)
@@ -131,39 +133,7 @@ export function InviteGroupDialog({
                       : [...previous, item.userId],
                   )
                 }
-                disabled={disabled}
-                accessibilityRole='checkbox'
-                accessibilityLabel={item.username}
-                accessibilityState={{ checked, disabled }}
-              >
-                <XStack minH={52} items='center' gap='$3' py='$2'>
-                  <YStack
-                    width={24}
-                    height={24}
-                    rounded={4}
-                    borderWidth={1}
-                    borderColor={checked ? '$accent' : '$border'}
-                    bg={checked ? '$accent' : 'transparent'}
-                    items='center'
-                    justify='center'
-                  >
-                    {checked && <Check size={18} color='white' />}
-                  </YStack>
-                  <Text
-                    flex={1}
-                    color='$textPrimary'
-                    fontSize='$3'
-                    numberOfLines={1}
-                  >
-                    {item.username}
-                  </Text>
-                  {sent.includes(item.userId) && (
-                    <Text color='$textSecondary' fontSize='$1'>
-                      Enviada
-                    </Text>
-                  )}
-                </XStack>
-              </Pressable>
+              />
             );
           }}
         />

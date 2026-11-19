@@ -5,7 +5,7 @@ import Animated, {
   useAnimatedStyle,
   withTiming,
 } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { PortalHost, PortalProvider, YStack } from 'tamagui';
 
 import { CallProvider } from '@/src/providers/call-provider';
@@ -19,9 +19,12 @@ import { useChatContext } from '@/src/contexts/chat-context';
 import { AttachmentProvider } from '@/src/providers/attachment-provider';
 import { ChatProvider } from '@/src/providers/chat-provider';
 import { UserProvider } from '@/src/providers/user-provider';
+import { COLORS } from '@/src/lib/constants';
 
 function ChatContent() {
   const { activeConversation } = useChatContext();
+  const composerUsesSafeArea =
+    Platform.OS === 'android' && !!activeConversation && !activeConversation.invitation;
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [
       {
@@ -33,7 +36,10 @@ function ChatContent() {
   }));
 
   return (
-    <SafeAreaView style={{ flex: 1 }}>
+    <SafeAreaView
+      edges={composerUsesSafeArea ? ['top', 'left', 'right'] : undefined}
+      style={{ flex: 1 }}
+    >
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -60,7 +66,12 @@ function ChatContent() {
               ) : (
                 <>
                   <MessageList key={activeConversation.id} />
-                  <MessageComposer key={activeConversation.id} />
+                  <SafeAreaView
+                    edges={composerUsesSafeArea ? ['bottom'] : []}
+                    style={{ backgroundColor: COLORS['bg-app'] }}
+                  >
+                    <MessageComposer key={activeConversation.id} />
+                  </SafeAreaView>
                 </>
               )}
             </YStack>
@@ -79,7 +90,9 @@ export default function ChatPage() {
           <GroupCallProvider>
             <AttachmentProvider>
               <PortalProvider>
-                <ChatContent />
+                <SafeAreaProvider>
+                  <ChatContent />
+                </SafeAreaProvider>
                 <CallPanel />
                 <GroupCallPanel />
                 <PortalHost name='chat' />

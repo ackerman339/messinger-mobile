@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -16,9 +16,18 @@ import { useGroupCall } from './group-call-context';
 import type { GroupCallView } from './group-call-context';
 import { getLiveKitNative, requestGroupMediaPermission } from './room-platform';
 import { useGroupRoom } from './use-group-room';
+import { useCallPanelVisibility } from '../hooks/use-call-panel-visibility';
 import { COLORS } from '../lib/constants';
 
-function ConnectedPanel({ view }: { view: GroupCallView }) {
+function ConnectedPanel({
+  view,
+  minimized,
+  setMinimized,
+}: {
+  view: GroupCallView;
+  minimized: boolean;
+  setMinimized: (minimized: boolean) => void;
+}) {
   const { room, call, title, preparingMedia, initialMediaError } = view;
   const { canEnd, ending, end, leave, error } = useGroupCall();
   const {
@@ -32,7 +41,6 @@ function ConnectedPanel({ view }: { view: GroupCallView }) {
   } = useGroupRoom(room);
   const { VideoTrack } = getLiveKitNative();
   const { top, bottom } = useSafeAreaInsets();
-  const [minimized, setMinimized] = useState(false);
   const connected = state === ConnectionState.Connected;
   const video = call.media === 'video';
   const status = connected
@@ -217,7 +225,22 @@ export function GroupCallPanel() {
     dismissIncoming,
   } = useGroupCall();
   const { top, bottom } = useSafeAreaInsets();
-  if (view) return <ConnectedPanel key={view.call.id} view={view} />;
+  const [minimizedCall, setMinimizedCall] = useState<string>();
+  const callId = view?.call.id ?? screen?.callId;
+  const minimized = !!view && minimizedCall === callId;
+  useCallPanelVisibility(minimized ? undefined : callId);
+  useEffect(() => {
+    if (!callId) setMinimizedCall(undefined);
+  }, [callId]);
+  if (view)
+    return (
+      <ConnectedPanel
+        key={view.call.id}
+        view={view}
+        minimized={minimized}
+        setMinimized={(value) => setMinimizedCall(value ? view.call.id : undefined)}
+      />
+    );
 
   const details = screen ?? incoming;
   if (!details) return null;

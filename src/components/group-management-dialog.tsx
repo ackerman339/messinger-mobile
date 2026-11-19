@@ -4,8 +4,9 @@ import { useUserContext } from '@/src/contexts/user-context';
 import { conversationService } from '@/src/services/conversation';
 import type { Conversation } from '@/src/types/conversation';
 import { FlatList } from 'react-native';
-import { Button, Text, XStack } from 'tamagui';
+import { Button, Input, Text, XStack } from 'tamagui';
 import { GroupDialog } from './group-dialog';
+import { GroupMemberOption } from './group-member-option';
 export function GroupManagementDialog({
   group,
   action,
@@ -24,6 +25,7 @@ export function GroupManagementDialog({
   const [selected, setSelected] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [query, setQuery] = useState('');
   const pending = useRef(false);
   const member = group.members.find(
     (item) => item.userId === user?.id && !item.softDeletedAt,
@@ -31,6 +33,10 @@ export function GroupManagementDialog({
   const owner = member?.role === 'OWNER';
   const candidates = group.members.filter(
     (item) => item.userId !== user?.id && !item.softDeletedAt,
+  );
+  const search = query.trim().toLocaleLowerCase();
+  const visible = candidates.filter((item) =>
+    item.username.toLocaleLowerCase().includes(search),
   );
   const permitted =
     !group.isDeleted &&
@@ -92,32 +98,39 @@ export function GroupManagementDialog({
       onClose={onClose}
     >
       {action === 'transfer' && (
-        <FlatList
-          style={{ maxHeight: 260, flexGrow: 0 }}
-          data={candidates}
-          keyExtractor={(item) => item.userId}
-          extraData={{ selected, busy }}
-          ListEmptyComponent={
-            <Text color='$textSecondary'>
-              No hay otros miembros disponibles.
-            </Text>
-          }
-          renderItem={({ item }) => (
-            <Button
-              minH={48}
-              mb='$2'
-              disabled={busy}
-              onPress={() => setSelected(item.userId)}
-              accessibilityRole='radio'
-              accessibilityLabel={item.username}
-              accessibilityState={{ checked: selected === item.userId }}
-              bg={selected === item.userId ? '$accent' : '$background'}
-              color={selected === item.userId ? 'white' : '$textPrimary'}
-            >
-              {item.username}
-            </Button>
-          )}
-        />
+        <>
+          <Input
+            accessibilityLabel='Buscar personas'
+            placeholder='Buscar personas'
+            value={query}
+            onChangeText={setQuery}
+            color='$textPrimary'
+            placeholderTextColor='$textSecondary'
+          />
+          <FlatList
+            style={{ maxHeight: 300, flexGrow: 0 }}
+            data={visible}
+            keyExtractor={(item) => item.userId}
+            extraData={{ selected, busy }}
+            keyboardShouldPersistTaps='handled'
+            ListEmptyComponent={
+              <Text color='$textSecondary' fontSize='$3'>
+                {candidates.length
+                  ? 'No hay coincidencias.'
+                  : 'No hay otros miembros disponibles.'}
+              </Text>
+            }
+            renderItem={({ item }) => (
+              <GroupMemberOption
+                single
+                name={item.username}
+                checked={selected === item.userId}
+                disabled={busy}
+                onPress={() => setSelected(item.userId)}
+              />
+            )}
+          />
+        </>
       )}
       {!!error && (
         <Text accessibilityRole='alert' color='$red10'>

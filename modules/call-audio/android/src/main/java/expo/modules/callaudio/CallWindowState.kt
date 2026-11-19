@@ -6,15 +6,15 @@ import android.os.*
 import android.view.WindowManager
 import java.lang.ref.WeakReference
 
-/**
- * Only the real app activity may remain over the keyguard while its React call panel is visible.
- */
+/** Keeps the host above the keyguard through the native-to-React call handoff. */
 internal object CallWindowState : Application.ActivityLifecycleCallbacks {
   private var registered = false
   private var host = ""
   private var activity = WeakReference<Activity>(null)
   private var panel: String? = null
+  private var pendingGroupAnswer: String? = null
   private val main = Handler(Looper.getMainLooper())
+  private val expireGroupAnswer = Runnable { clearGroupAnswer() }
 
   fun initialize(app: Application) {
     if (registered) return
@@ -24,13 +24,35 @@ internal object CallWindowState : Application.ActivityLifecycleCallbacks {
   }
 
   fun panel(id: String, visible: Boolean) = main.post {
-    if (visible) panel = id else if (panel == id) panel = null
+    if (visible) {
+      panel = id
+      if (pendingGroupAnswer == id) {
+        clearGroupAnswer()
+        return@post
+      }
+    } else if (panel == id) panel = null
     refresh()
   }
 
+  fun prepareGroupAnswer(id: String) {
+    pendingGroupAnswer = id
+    main.removeCallbacks(expireGroupAnswer)
+    main.postDelayed(expireGroupAnswer, 30_000)
+    refresh()
+  }
+
+  fun clearGroupAnswer() {
+    pendingGroupAnswer = null
+    main.removeCallbacks(expireGroupAnswer)
+    refresh()
+  }
+
+  internal fun shouldShowWhenLocked() =
+    CallService.current() != null || pendingGroupAnswer != null || panel != null
+
   fun refresh() {
-    val visible = CallService.current() != null || panel != null
     val target = activity.get() ?: return
+    val visible = shouldShowWhenLocked()
     if (Build.VERSION.SDK_INT >= 27) target.setShowWhenLocked(visible)
     else if (visible) target.window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED)
     else target.window.clearFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED)

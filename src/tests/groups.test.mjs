@@ -42,6 +42,7 @@ function load(file, dependencies = {}) {
         },
         'lucide-react-native': { Check: 'Check', Users: 'Users' },
         './group-dialog': { GroupDialog: 'GroupDialog' },
+        './group-member-option': { GroupMemberOption: 'GroupMemberOption' },
         '@/src/lib/constants': { COLORS: {} },
         '@/src/hooks/use-message-notifications': {
           useMessageNotifications() {},

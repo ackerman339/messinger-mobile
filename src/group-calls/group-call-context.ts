@@ -6,6 +6,7 @@ import type { GroupCall } from './types';
 export type GroupCallScreen = {
   title: string;
   media: CallMedia;
+  callId?: string;
 };
 
 export type GroupCallView = {

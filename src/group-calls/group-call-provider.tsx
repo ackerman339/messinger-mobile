@@ -263,16 +263,7 @@ export function GroupCallProvider({ children }: { children: ReactNode }) {
           media: invitation.media,
         }
       : null;
-  const sessionGroup = view
-    ? activeConversation?.id === view.call.conversationId
-      ? activeConversation
-      : conversations.get(view.call.conversationId)
-    : undefined;
-  const ownRole = sessionGroup?.members.find(
-    (entry) => entry.userId === user?.id && !entry.softDeletedAt,
-  )?.role;
-  const canEnd =
-    !!view && !!user && (view.call.startedBy === user.id || ownRole === 'OWNER');
+  const canEnd = !!view && !!userId && view.call.startedBy === userId;
 
   function connect(
     conversationId: string,
@@ -285,7 +276,7 @@ export function GroupCallProvider({ children }: { children: ReactNode }) {
     setBusy(true);
     setError(null);
     setInvitation(null);
-    setScreen({ title, media: target?.media ?? media });
+    setScreen({ title, media: target?.media ?? media, callId: target?.id });
     if (!target) setRingbackUntil(Date.now() + 60_000);
     const session: Session = {
       call: target ?? undefined,
@@ -332,7 +323,7 @@ export function GroupCallProvider({ children }: { children: ReactNode }) {
         throw new Error('The room ended before its access response arrived');
       }
       updateCall(access.call);
-      setScreen({ title, media: access.call.media });
+      setScreen({ title, media: access.call.media, callId: access.call.id });
       session.stopAudio = await prepareGroupAudio(!access.created);
       if (session.closing) return;
       const view = { title, call: access.call, room, preparingMedia: true };

@@ -285,6 +285,7 @@ for (const desktop of mobile ? [false] : [false, true]) {
             withTiming: (value) => value,
           },
           'react-native-safe-area-context': {
+            SafeAreaProvider: 'SafeAreaProvider',
             SafeAreaView: 'SafeAreaView',
           },
           tamagui: {
@@ -299,6 +300,7 @@ for (const desktop of mobile ? [false] : [false, true]) {
           '@/src/components/conversations-list': { ConversationList },
           '@/src/components/messages-list': { MessageList },
           '@/src/components/message-composer': { MessageComposer },
+          '@/src/lib/constants': { COLORS: { 'bg-app': 'white' } },
           '@/src/components/group-invitation-panel': component(
             'GroupInvitationPanel',
           ),
@@ -336,6 +338,13 @@ for (const desktop of mobile ? [false] : [false, true]) {
             .type()
       : module.ChatLayout;
     const first = render();
+    if (mobile) {
+      assert.deepEqual(first.props.edges, ['top', 'left', 'right']);
+      const footer = nodes(first).find(
+        (node) => node.type === 'SafeAreaView' && node.props.edges.includes('bottom'),
+      );
+      assert.equal(footer.props.children.type, MessageComposer);
+    }
     for (const component of [
       ConversationList,
       MessageList,
