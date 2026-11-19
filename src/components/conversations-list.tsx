@@ -105,21 +105,7 @@ export function ConversationList() {
   /**
    * Select conversation and reset unread messages.
    */
-  const handleSelect = useCallback(
-    async (conversationId: string) => {
-      handleCurrentConversation(conversationId);
-
-      if (
-        conversations.get(conversationId)?.invitation ||
-        conversations.get(conversationId)?.isDeleted
-      )
-        return;
-      await conversationService.resetUnreadMessagesCount({
-        conversationId,
-      });
-    },
-    [handleCurrentConversation, conversations],
-  );
+  const handleSelect = handleCurrentConversation;
 
   const renderItem = useCallback<ListRenderItem<Conversation>>(
     ({ item }) => (
@@ -305,28 +291,13 @@ function ConversationRow({ conversation, isActive, onSelect }: ConversationRowPr
    * Listen for incoming messages.
    */
   useLayoutEffect(() => {
-    const unsubscribeNewMessage = wsClient.on(WS_SERVER_EVENTS.NEW_MESSAGE, async (message) => {
-      if ((message.conversation?.id ?? message.conversationId) !== conversation.id) {
-        return;
-      }
-
-      if (!activeConversation || activeConversation.id !== conversation.id) {
-        setUnreadMessageCount((previous) => previous + 1);
-      }
-
+    const unsubscribeNewMessage = wsClient.on(WS_SERVER_EVENTS.NEW_MESSAGE, (message) => {
+      if ((message.conversation?.id ?? message.conversationId) !== conversation.id) return;
+      if (activeConversation?.id !== conversation.id) setUnreadMessageCount((previous) => previous + 1);
       lastEntryRef.current = message;
       setLastMessageContent(getLastMessageContent(message));
-
-      if (activeConversation) {
-        await conversationService.resetUnreadMessagesCount({
-          conversationId: activeConversation.id,
-        });
-      }
     });
 
-    /**
-     * Listen for messages sent by the current user.
-     */
     const unsubscribeMessageSent = wsClient.on(WS_SERVER_EVENTS.MESSAGE_SENT, (message) => {
       if ((message.conversation?.id ?? message.conversationId) === conversation.id) {
         lastEntryRef.current = message;

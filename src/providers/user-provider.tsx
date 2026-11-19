@@ -1,3 +1,4 @@
+import { messageSync } from '@/src/services/message-sync';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
@@ -109,6 +110,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         const currentUser = await authService.me();
 
         setNotificationUser(currentUser.id);
+        messageSync.setAccount(currentUser.id);
         userRef.current = currentUser;
         setUser(currentUser);
 
@@ -117,6 +119,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         connectWebSocket();
       } catch {
         clearNotificationSession();
+        messageSync.setAccount();
         userRef.current = null;
         setUser(null);
       } finally {
@@ -129,6 +132,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     loggedOutRef.current = true;
+    messageSync.setAccount();
     clearNotificationSession();
     stopCallRuntime();
 

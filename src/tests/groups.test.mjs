@@ -261,7 +261,8 @@ test('the provider adds incoming invitations as pending conversations and remove
     useMemo: (callback) => callback(),
   };
   const { ChatProvider } = load('providers/chat-provider.tsx', {
-    react,
+    react: { ...react, useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot() },
+    '@/src/services/message-sync': { messageSync: { getSnapshot: () => ({ connectionEpoch: 1 }) } },
     'react-router-dom': {
       useSearchParams: () => [new URLSearchParams(), () => {}],
     },

@@ -1,9 +1,13 @@
+import { useIsFocused } from '@react-navigation/native';
+import { messageSync, pendingForConversation, getDeliveryStatus, mergeMessageHistory } from '@/src/services/message-sync';
+import { MessageDeliveryIcon } from './message-delivery-icon';
 import * as Clipboard from 'expo-clipboard';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   Alert,
   FlatList,
   Pressable,
@@ -22,17 +26,18 @@ import { useChatContext } from '@/src/contexts/chat-context';
 import { useUserContext } from '@/src/contexts/user-context';
 import { useCursorPagination } from '@/src/hooks/use-cursor-pagination';
 import { conversationService } from '@/src/services/conversation';
-import { WS_SERVER_EVENTS } from '@/src/types/websocket';
+import { MessageStatus, WS_SERVER_EVENTS } from '@/src/types/websocket';
 import { ConversationEventMessage } from './conversation-event-message';
 
 import type {
   ConversationEvent,
   Message,
 } from '@/src/types/conversation';
-import type { ListRenderItem } from 'react-native';
+import type { ListRenderItem, ViewToken } from 'react-native';
 
 const PAGE_SIZE = 20;
 const INITIAL_SCROLL_DELAY = 500;
+const VIEWABILITY_CONFIG = { itemVisiblePercentThreshold: 5 };
 
 export function MessageList() {
   const { user } = useUserContext();
@@ -55,38 +60,71 @@ export function MessageList() {
     useState(false);
 
   const {
-    items: messages,
+    items: serverMessages,
     isLoading,
     hasMore,
     loadMore,
     setItems,
     error,
     refresh,
+    reload,
   } = useCursorPagination<Message>({
-    fetchPage: async (cursor) => {
-      if (activeConversation?.isDeleted)
-        return {
-          page: [...activeConversation.messages].reverse(),
-          nextCursor: null,
-        };
-      if (!conversationId) {
-        return {
-          page: [],
-          nextCursor: null,
-        };
+    fetchPage: (cursor) => {
+      if (!activeConversation) return Promise.resolve({ page: [], nextCursor: null });
+      if (activeConversation.isDeleted || (!cursor && !messageSync.getSnapshot().connected)) {
+        return Promise.resolve({ page: [...(activeConversation.messages ?? [])].reverse(), nextCursor: null });
       }
-
-      return conversationService.getMessages(conversationId, {
-        cursor,
-        limit: PAGE_SIZE,
-      });
+      return conversationService.getMessages(activeConversation.id, { cursor, limit: PAGE_SIZE });
     },
-
-    reverse: true,
-    getItemKey: (message) => message.messageId || message.id,
+    mergePage: mergeMessageHistory,
 
     deps: [conversationId],
   });
+
+  const { pending, connectionEpoch, updates } = useSyncExternalStore(
+    messageSync.subscribe,
+    messageSync.getSnapshot,
+    messageSync.getServerSnapshot,
+  );
+  const queued = useMemo(() => pendingForConversation(pending, activeConversation, user?.id), [pending, activeConversation, user?.id]);
+  const messages = useMemo(() => {
+    const confirmed = new Set(serverMessages.map((message) => message.clientMessageId));
+    return [...serverMessages, ...queued.filter((message) => !confirmed.has(message.clientMessageId))];
+  }, [serverMessages, queued]);
+  const previousConnection = useRef(connectionEpoch);
+
+  useEffect(() => {
+    if (connectionEpoch === previousConnection.current) return;
+    previousConnection.current = connectionEpoch;
+    if (conversationId && !activeConversation?.isDeleted) reload();
+  }, [activeConversation?.isDeleted, connectionEpoch, conversationId, reload]);
+
+  useEffect(() => {
+    if (activeConversation?.isDeleted) return;
+    for (const message of serverMessages) messageSync.receipt(message, MessageStatus.DELIVERED);
+  }, [activeConversation?.isDeleted, serverMessages]);
+
+  const isFocused = useIsFocused();
+  const focused = useRef(isFocused);
+  const visible = useRef<ViewToken<Message>[]>([]);
+  const markVisibleRead = useCallback(() => {
+    if (!focused.current || AppState.currentState !== 'active') return;
+    for (const { item, isViewable } of visible.current) {
+      if (isViewable && !item.localStatus && (item.conversationId ?? item.conversation?.id) === conversationId) {
+        messageSync.receipt(item, MessageStatus.READ);
+      }
+    }
+  }, [conversationId]);
+  const onViewableItemsChanged = useCallback(({ viewableItems }: { viewableItems: ViewToken<Message>[] }) => {
+    visible.current = viewableItems;
+    markVisibleRead();
+  }, [markVisibleRead]);
+  useEffect(() => {
+    focused.current = isFocused && !activeConversation?.isDeleted;
+    markVisibleRead();
+    const subscription = AppState.addEventListener('change', markVisibleRead);
+    return () => subscription.remove();
+  }, [activeConversation?.isDeleted, isFocused, markVisibleRead]);
 
   useEffect(() => {
     if (!emptiedConversation || emptiedConversation.id !== conversationId)
@@ -232,6 +270,12 @@ export function MessageList() {
     };
   }, [conversationId, activeConversation, setItems]);
 
+  useEffect(() => {
+    if (!queued.length) return;
+    const frame = requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
+    return () => cancelAnimationFrame(frame);
+  }, [queued.length]);
+
   /**
    * Initial scroll to bottom.
    */
@@ -343,7 +387,7 @@ export function MessageList() {
         const message = messages.find(
           (item) => (item.messageId || item.id) === messageId,
         );
-        if (!message) return current;
+        if (!message || message.localStatus) return current;
         if (
           message.senderId !== user?.id &&
           (message.content === '' || message.attachments?.length)
@@ -441,12 +485,13 @@ export function MessageList() {
       return (
         <MessageBubble
           message={item}
+          status={item.localStatus ?? getDeliveryStatus(item.deliveries ?? [], updates.get(messageId))}
           selected={selectedMessageIds.includes(messageId)}
           onSelect={toggleMessageSelection}
         />
       );
     },
-    [selectedMessageIds, toggleMessageSelection],
+    [selectedMessageIds, toggleMessageSelection, updates],
   );
 
   const keyExtractor = useCallback(
@@ -489,6 +534,8 @@ export function MessageList() {
         data={messages}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
+        viewabilityConfig={VIEWABILITY_CONFIG}
+        onViewableItemsChanged={onViewableItemsChanged}
         onStartReached={handleStartReached}
         onStartReachedThreshold={0.2}
         maintainVisibleContentPosition={{
@@ -517,6 +564,7 @@ export function MessageList() {
 }
 
 type MessageBubbleProps = {
+  status: React.ComponentProps<typeof MessageDeliveryIcon>['status'];
   message: Message;
   selected: boolean;
   onSelect: (messageId: string) => void;
@@ -524,6 +572,7 @@ type MessageBubbleProps = {
 
 function MessageBubble({
   message,
+  status,
   selected,
   onSelect,
 }: MessageBubbleProps) {
@@ -562,7 +611,12 @@ function MessageBubble({
   const messageId = message.messageId || message.id;
 
   function handlePress() {
-    onSelect(messageId);
+    if (message.localStatus === 'FAILED') {
+      Alert.alert('No se pudo enviar', undefined, [
+        { text: 'Cerrar', style: 'cancel' },
+        { text: 'Quitar', onPress: () => messageSync.discard(messageId) },
+      ]);
+    } else if (!message.localStatus) onSelect(messageId);
   }
 
   return (
@@ -603,7 +657,9 @@ function MessageBubble({
           </Text>
           {message.attachments?.length ? (
             <YStack gap='$2' my='$2'>
-              {message.attachments.map((attachment) => (
+              {message.attachments.map((attachment) => message.localStatus ? (
+                <Text key={attachment.id} fontSize='$2' color='$textSecondary'>{attachment.fileName}</Text>
+              ) : (
                 <MessageAttachment
                   key={attachment.id}
                   attachment={attachment}
@@ -622,11 +678,7 @@ function MessageBubble({
               })}
             </Text>
 
-            {isOwn ? (
-              <Text fontSize='$2' color='$accent'>
-                ✓✓
-              </Text>
-            ) : null}
+            {isOwn && <MessageDeliveryIcon status={status} />}
           </XStack>
         </YStack>
       </Pressable>

@@ -1,5 +1,7 @@
+import { messageSync } from '@/src/services/message-sync';
+import { MessageDeliveryIcon } from './message-delivery-icon';
 import { X } from 'lucide-react-native';
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { Button, Dialog, Input, Text, XStack, YStack } from 'tamagui';
 
 import { useChatContext } from '@/src/contexts/chat-context';
@@ -18,6 +20,13 @@ export function NewMessageDialog({ open, onOpenChange }: NewMessageDialogProps) 
   const [userCode, setUserCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const { pending } = useSyncExternalStore(
+    messageSync.subscribe,
+    messageSync.getSnapshot,
+    messageSync.getServerSnapshot,
+  );
+  const outgoing = pending.filter((entry) => 'receiverId' in entry.data && entry.data.receiverId === receiverId);
 
   async function handleContinue() {
     if (!userCode.trim()) return;
@@ -168,7 +177,16 @@ export function NewMessageDialog({ open, onOpenChange }: NewMessageDialogProps) 
                 </Button>
               </YStack>
             ) : (
-              <MessageComposer />
+              <>
+                {outgoing.map((message) => (
+                  <XStack key={message.id} px='$4' py='$1' gap='$2' items='center'>
+                    <Text flex={1} numberOfLines={1}>{message.data.content}</Text>
+                    <MessageDeliveryIcon status={message.failed ? 'FAILED' : 'PENDING'} />
+                    {message.failed && <Button size='$2' onPress={() => messageSync.discard(message.id)}>Quitar</Button>}
+                  </XStack>
+                ))}
+                <MessageComposer />
+              </>
             )}
           </YStack>
         </Dialog.Content>

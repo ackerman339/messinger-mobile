@@ -39,6 +39,8 @@ test('history deletion removes the corresponding call cards immediately and pres
     ],
     useRef: (current) => ({ current }),
     useCallback: (callback) => callback,
+    useMemo: (callback) => callback(),
+    useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
     useEffect: (callback) => effects.push(callback),
     useLayoutEffect: (callback) => effects.push(callback),
   };
@@ -55,6 +57,11 @@ test('history deletion removes the corresponding call cards immediately and pres
   function dependency(name) {
     if (name === 'expo-clipboard') return { setStringAsync: async () => {} };
     if (name === 'react') return hooks;
+    if (name === '@react-navigation/native') return { useIsFocused: () => true };
+    if (name.includes('services/message-sync')) return {
+      messageSync: { getSnapshot: () => ({ pending: [], updates: new Map(), connected: true, connectionEpoch: 1 }) },
+      pendingForConversation: () => [],
+    };
     if (name === 'react-native')
       return { FlatList: 'FlatList', ActivityIndicator: 'ActivityIndicator' };
     if (name === 'tamagui')

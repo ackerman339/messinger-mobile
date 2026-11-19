@@ -23,6 +23,7 @@ export function MessageComposer() {
   const inputRef = useRef<TextInput>(null);
 
   const [message, setMessage] = useState('');
+  const [sendError, setSendError] = useState('');
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
 
   const [selection, setSelection] = useState({
@@ -76,6 +77,12 @@ export function MessageComposer() {
     });
   }
 
+  function submitMessage(content: string) {
+    const saved = handleSendMessage(content, []);
+    setSendError(saved ? '' : 'No se pudo guardar el mensaje en este dispositivo.');
+    return saved;
+  }
+
   function handleSubmit() {
     const content = message.trim();
 
@@ -83,6 +90,7 @@ export function MessageComposer() {
       return;
     }
 
+    if (!submitMessage(content)) return;
     setMessage('');
     setSelection({
       start: 0,
@@ -95,7 +103,6 @@ export function MessageComposer() {
     });
 
     setEmojiPickerOpen(false);
-    handleSendMessage(content, []);
   }
 
   async function uploadFiles(files: LocalFile[]) {
@@ -106,9 +113,14 @@ export function MessageComposer() {
     try {
       const attachments = await prepareAttachments(files);
 
-      await handleSendMessage('Nuevo archivo', attachments);
+      if (!handleSendMessage('Nuevo archivo', attachments)) {
+        setSendError('No se pudo guardar el mensaje en este dispositivo.');
+        return;
+      }
+      setSendError('');
     } catch (error) {
       console.error('[attachments] failed to send files:', error);
+      setSendError('No se pudo subir el archivo. Inténtalo de nuevo.');
     }
   }
 
@@ -134,9 +146,11 @@ export function MessageComposer() {
 
       const attachments = await prepareAttachments([recording]);
 
-      await handleSendMessage('Nota de voz', attachments);
+      if (!handleSendMessage('Nota de voz', attachments)) throw new Error('No se guardó el mensaje');
+      setSendError('');
     } catch (error) {
       console.error('[voice] failed to send recording:', error);
+      setSendError('No se pudo enviar la nota de voz.');
     }
   }
 
@@ -170,6 +184,7 @@ export function MessageComposer() {
 
   return (
     <View className='border-t border-border bg-bg-app px-3 py-2'>
+      {sendError ? <Text accessibilityRole='alert' className='pb-2 text-red-600'>{sendError}</Text> : null}
       {isRecording ? (
         <View style={{ height: 44 }}>
           <VoiceRecorder

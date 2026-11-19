@@ -1,3 +1,4 @@
+import { messageSync } from '@/src/services/message-sync';
 import { randomUUID } from 'expo-crypto';
 import { router } from 'expo-router';
 
@@ -47,6 +48,10 @@ let currentUrl = '';
 
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectAttempts = 0;
+let authenticationTimer: ReturnType<typeof setTimeout> | undefined;
+let heartbeat: ReturnType<typeof setInterval> | undefined;
+let lastPong = 0;
+let authGeneration = 0;
 
 const MAX_RECONNECT_DELAY = 30_000;
 const INITIAL_RECONNECT_DELAY = 300;
@@ -72,15 +77,45 @@ function getReconnectDelay() {
   return Math.floor(Math.random() * exponentialDelay);
 }
 
-async function handleOpen() {
-  console.log('[ws] connected');
+async function stopMessageTransport() {
+  clearTimeout(authenticationTimer);
+  clearInterval(heartbeat);
+  messageSync.disconnected();
+}
 
-  /**
-   * Connection successfully established.
-   *
-   * Reset exponential backoff.
-   */
+function replaceSocket(source: WebSocket) {
+  if (source !== socket) return;
+  socket = null;
+  stopMessageTransport();
+  rejectPendingRequests();
+  source.close();
+  scheduleReconnect();
+}
+
+function startMessageTransport(source: WebSocket, userId: string) {
+  clearTimeout(authenticationTimer);
+  clearInterval(heartbeat);
   reconnectAttempts = 0;
+  lastPong = Date.now();
+  heartbeat = setInterval(() => {
+    if (Date.now() - lastPong > 65_000 || !sendFrame(source, { type: 'WS_PING', data: null })) {
+      replaceSocket(source);
+    }
+  }, 25_000);
+  messageSync.authenticated(userId, ({ type, data, id }) =>
+    sendFrame(source, { type, data, requestId: id }),
+  );
+}
+
+function sendFrame(source: WebSocket, frame: object) {
+  if (source !== socket || source.readyState !== WebSocket.OPEN) return false;
+  try {
+    source.send(JSON.stringify(frame));
+    return true;
+  } catch {
+    replaceSocket(source);
+    return false;
+  }
 }
 
 async function handleMessage(event: MessageEvent) {
@@ -107,6 +142,15 @@ async function handleMessage(event: MessageEvent) {
         }),
       );
 
+      return;
+    }
+
+    if (type === WS_SERVER_EVENTS.WS_AUTHENTICATED) {
+      startMessageTransport(source, (data as WsServerPayloads['WS_AUTHENTICATED']).userId);
+      return;
+    }
+    if (type === WS_SERVER_EVENTS.WS_PONG) {
+      lastPong = Date.now();
       return;
     }
 
@@ -157,6 +201,7 @@ async function handleMessage(event: MessageEvent) {
         // (e.g. logout elsewhere) — refresh will fail too, go straight to login
         if (message === 'WS_AUTH:SESSION_REVOKED') {
           disconnect();
+          messageSync.setAccount();
           await authService.logout();
           await tokenStorage.clear();
           router.replace('/auth');
@@ -170,41 +215,40 @@ async function handleMessage(event: MessageEvent) {
       }
     }
 
-    handlers.get(type)?.forEach((handler) => handler(data));
+    if (messageSync.acknowledge(type, data, requestId)) {
+      handlers.get(type)?.forEach((handler) => handler(data));
+    }
   } catch (err) {
     console.error('[ws] invalid message', err);
   }
 }
 
 async function handleAuthError() {
+  if (reconnecting) return;
   reconnecting = true;
-
+  disconnect();
+  const generation = authGeneration;
+  let retry = false;
   try {
-    /**
-     * Close current socket intentionally.
-     *
-     * handleClose() will NOT reconnect because
-     * manualDisconnect is true.
-     */
-    disconnect();
-
-    /**
-     * Refresh the access token.
-     */
     await authService.refresh();
-
-    /**
-     * connect() resets manualDisconnect.
-     */
-    connect(currentUrl);
+    if (generation === authGeneration) connect(currentUrl);
   } catch (error) {
-    console.error('[ws] session refresh failed', error);
-
-    await authService.logout();
+    if (generation !== authGeneration) return;
+    const status = (error as { response?: { status?: number } })?.response?.status;
+    if (status !== 400 && status !== 401 && status !== 403) {
+      retry = true;
+      return;
+    }
+    messageSync.setAccount();
+    void authService.logout().catch(() => {});
     await tokenStorage.clear();
     router.replace('/auth');
   } finally {
     reconnecting = false;
+    if (retry && generation === authGeneration) {
+      manualDisconnect = false;
+      scheduleReconnect();
+    }
   }
 }
 
@@ -259,6 +303,7 @@ function handleClose(event: CloseEvent) {
   });
 
   socket = null;
+  stopMessageTransport();
 
   /**
    * Intentional disconnect.
@@ -309,13 +354,16 @@ export function connect(url: string) {
 
   socket = new WebSocket(url);
 
-  socket.onopen = handleOpen;
+  const source = socket;
+  authenticationTimer = setTimeout(() => replaceSocket(source), 20_000);
   socket.onmessage = handleMessage;
   socket.onclose = handleClose;
   socket.onerror = handleError;
 }
 
 export function disconnect() {
+  authGeneration++;
+  stopMessageTransport();
   rejectPendingRequests();
   earlyInvitations.clear();
   console.trace('[ws] DISCONNECT');
