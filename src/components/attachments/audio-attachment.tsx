@@ -9,10 +9,11 @@ import { useAttachmentContext } from '@/src/contexts/attachment-context';
 type AudioAttachmentProps = {
   attachmentId: string;
   fileName: string;
+  isVoiceNote: boolean;
 };
 
-export function AudioAttachment({ attachmentId, fileName }: AudioAttachmentProps) {
-  const { getDownloadUrl, downloadAttachment, getLocalUri, getDownloadState, clearError } =
+export function AudioAttachment({ attachmentId, fileName, isVoiceNote }: AudioAttachmentProps) {
+  const { downloadAttachment, getLocalUri, getDownloadState, clearError } =
     useAttachmentContext();
 
   const localUri = getLocalUri(attachmentId, fileName);
@@ -33,9 +34,7 @@ export function AudioAttachment({ attachmentId, fileName }: AudioAttachmentProps
           return;
         }
 
-        await getDownloadUrl(attachmentId);
-
-        const uri = await downloadAttachment(attachmentId, fileName);
+        const uri = await downloadAttachment(attachmentId, fileName, { keepForPlayback: isVoiceNote });
 
         if (!cancelled) {
           setAudioUri(uri);
@@ -50,7 +49,7 @@ export function AudioAttachment({ attachmentId, fileName }: AudioAttachmentProps
     return () => {
       cancelled = true;
     };
-  }, [attachmentId, fileName, localUri, getDownloadUrl, downloadAttachment, clearError]);
+  }, [attachmentId, fileName, isVoiceNote, localUri, downloadAttachment, clearError]);
 
   if (state.error) {
     return (

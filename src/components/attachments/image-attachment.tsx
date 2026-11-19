@@ -1,7 +1,7 @@
-import { Download, X } from 'lucide-react-native';
+import { X } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, Modal, Pressable, useWindowDimensions } from 'react-native';
-import { Text, XStack, YStack } from 'tamagui';
+import { Text, YStack } from 'tamagui';
 
 import { useAttachmentContext } from '@/src/contexts/attachment-context';
 
@@ -11,12 +11,9 @@ type ImageAttachmentProps = {
 };
 
 export function ImageAttachment({ attachmentId, fileName }: ImageAttachmentProps) {
-  const { getDownloadUrl, downloadAttachment, getLocalUri, getDownloadState } =
-    useAttachmentContext();
+  const { getDownloadUrl, getLocalUri } = useAttachmentContext();
 
   const localUri = getLocalUri(attachmentId, fileName);
-
-  const state = getDownloadState(attachmentId);
 
   const [previewUri, setPreviewUri] = useState<string | null>(localUri ?? null);
 
@@ -68,20 +65,6 @@ export function ImageAttachment({ attachmentId, fileName }: ImageAttachmentProps
     };
   }, [attachmentId, localUri, getDownloadUrl]);
 
-  /**
-   * Download the image and immediately
-   * switch the preview to the local file.
-   */
-  const handleDownload = async () => {
-    try {
-      const uri = await downloadAttachment(attachmentId, fileName);
-
-      setPreviewUri(uri);
-    } catch {
-      // Error is handled by the provider.
-    }
-  };
-
   const handleOpenViewer = () => {
     setViewerVisible(true);
   };
@@ -89,8 +72,6 @@ export function ImageAttachment({ attachmentId, fileName }: ImageAttachmentProps
   const handleCloseViewer = () => {
     setViewerVisible(false);
   };
-
-  const isDownloaded = !!localUri || state.isDownloaded;
 
   if (!previewUri) {
     return (
@@ -116,38 +97,6 @@ export function ImageAttachment({ attachmentId, fileName }: ImageAttachmentProps
             resizeMode='cover'
           />
         </Pressable>
-
-        {!isDownloaded ? (
-          <Pressable onPress={handleDownload} disabled={state.isDownloading}>
-            <XStack
-              bg='$accent'
-              px='$3'
-              py='$2'
-              items='center'
-              justify='center'
-              gap='$2'
-              style={{
-                borderRadius: 8,
-              }}
-            >
-              {state.isDownloading ? (
-                <ActivityIndicator color='white' />
-              ) : (
-                <>
-                  <Download size={18} color='white' />
-
-                  <Text color='white'>Descargar</Text>
-                </>
-              )}
-            </XStack>
-          </Pressable>
-        ) : null}
-
-        {state.error ? (
-          <Text fontSize='$2' color='$red10'>
-            {state.error}
-          </Text>
-        ) : null}
       </YStack>
 
       <Modal

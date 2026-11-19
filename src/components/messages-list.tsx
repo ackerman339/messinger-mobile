@@ -14,6 +14,7 @@ import { wsClient } from '@/src/clients/websocket-client';
 import { AudioAttachment } from '@/src/components/attachments/audio-attachment';
 import { FileAttachment } from '@/src/components/attachments/file-attachment';
 import { ImageAttachment } from '@/src/components/attachments/image-attachment';
+import { MessageAttachmentDownload } from '@/src/components/attachments/message-attachment-download';
 import { VideoAttachment } from '@/src/components/attachments/video-attachment';
 import { MessageSelectionBar } from '@/src/components/message-selection-bar';
 import { UploadingIndicator } from '@/src/components/uploading-indicator';
@@ -606,6 +607,10 @@ function MessageBubble({
                 <MessageAttachment
                   key={attachment.id}
                   attachment={attachment}
+                  isVoiceMessage={
+                    message.attachments.length === 1 &&
+                    message.content?.trim().toLowerCase() === 'nota de voz'
+                  }
                 />
               ))}
             </YStack>
@@ -631,29 +636,33 @@ function MessageBubble({
 
 type MessageAttachmentProps = {
   attachment: Message['attachments'][number];
+  isVoiceMessage: boolean;
 };
 
-function MessageAttachment({ attachment }: MessageAttachmentProps) {
+function MessageAttachment({ attachment, isVoiceMessage }: MessageAttachmentProps) {
   const { contentType, id, fileName } = attachment;
+  const isAudio = contentType.startsWith('audio/');
+  // Recorded voice messages have a fixed caption and a generated filename.
+  const isVoiceNote = isAudio && (
+    isVoiceMessage || /^voice-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\.m4a$/i.test(fileName)
+  );
 
+  let preview;
   if (contentType.startsWith('image/')) {
-    return <ImageAttachment attachmentId={id} fileName={fileName} />;
-  }
-
-  if (contentType.startsWith('video/')) {
-    return <VideoAttachment attachmentId={id} fileName={fileName} />;
-  }
-
-  if (contentType.startsWith('audio/')) {
-    return <AudioAttachment attachmentId={id} fileName={fileName} />;
+    preview = <ImageAttachment attachmentId={id} fileName={fileName} />;
+  } else if (contentType.startsWith('video/')) {
+    preview = <VideoAttachment attachmentId={id} fileName={fileName} />;
+  } else if (isAudio) {
+    preview = <AudioAttachment attachmentId={id} fileName={fileName} isVoiceNote={isVoiceNote} />;
+  } else {
+    preview = <FileAttachment attachmentId={id} fileName={fileName} contentType={contentType} />;
   }
 
   return (
-    <FileAttachment
-      attachmentId={id}
-      fileName={fileName}
-      contentType={contentType}
-    />
+    <YStack gap='$2'>
+      {preview}
+      {!isVoiceNote && <MessageAttachmentDownload attachment={attachment} />}
+    </YStack>
   );
 }
 

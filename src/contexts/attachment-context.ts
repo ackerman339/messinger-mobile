@@ -9,7 +9,11 @@ export type DownloadState = {
 export type AttachmentContextValue = {
   getDownloadUrl: (attachmentId: string) => Promise<string>;
   getCachedUrl: (attachmentId: string) => string | undefined;
-  downloadAttachment: (attachmentId: string, fileName: string) => Promise<string>;
+  downloadAttachment: (
+    attachmentId: string,
+    fileName: string,
+    options?: { keepForPlayback?: boolean },
+  ) => Promise<string>;
   getLocalUri: (attachmentId: string, fileName: string) => string | undefined;
   getDownloadState: (attachmentId: string) => DownloadState;
   clearError: (attachmentId: string) => void;

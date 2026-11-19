@@ -240,7 +240,7 @@ export function ConversationList() {
       </YStack>
       {activeTab === 'calls' && <CallHistoryList />}
       <Text color='red' fontSize='$1'>
-        APK version 1.5.0
+        APK version 1.6.0
       </Text>
     </YStack>
   );

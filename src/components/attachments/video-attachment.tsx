@@ -1,8 +1,8 @@
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { Download, Play } from 'lucide-react-native';
+import { Play } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable } from 'react-native';
-import { Text, XStack, YStack } from 'tamagui';
+import { YStack } from 'tamagui';
 
 import { useAttachmentContext } from '@/src/contexts/attachment-context';
 
@@ -12,12 +12,9 @@ type VideoAttachmentProps = {
 };
 
 export function VideoAttachment({ attachmentId, fileName }: VideoAttachmentProps) {
-  const { getDownloadUrl, downloadAttachment, getLocalUri, getDownloadState } =
-    useAttachmentContext();
+  const { getDownloadUrl, getLocalUri } = useAttachmentContext();
 
   const localUri = getLocalUri(attachmentId, fileName);
-
-  const downloadState = getDownloadState(attachmentId);
 
   const [uri, setUri] = useState<string | null>(localUri ?? null);
 
@@ -68,20 +65,6 @@ export function VideoAttachment({ attachmentId, fileName }: VideoAttachmentProps
   }, [attachmentId, localUri, getDownloadUrl]);
 
   /**
-   * Download the video and immediately
-   * switch the player to the local file.
-   */
-  const handleDownload = async () => {
-    try {
-      const downloadedUri = await downloadAttachment(attachmentId, fileName);
-
-      setUri(downloadedUri);
-    } catch (error) {
-      console.error('[VideoAttachment] Failed to download video', error);
-    }
-  };
-
-  /**
    * Open the native fullscreen video player.
    */
   const handleOpenFullscreen = async () => {
@@ -103,8 +86,6 @@ export function VideoAttachment({ attachmentId, fileName }: VideoAttachmentProps
       player.loop = false;
     },
   );
-
-  const isDownloaded = !!localUri || downloadState.isDownloaded;
 
   if (!uri) {
     return (
@@ -172,38 +153,6 @@ export function VideoAttachment({ attachmentId, fileName }: VideoAttachmentProps
           </YStack>
         </Pressable>
       </YStack>
-
-      {!isDownloaded ? (
-        <Pressable onPress={handleDownload} disabled={downloadState.isDownloading}>
-          <XStack
-            bg='$accent'
-            px='$3'
-            py='$2'
-            items='center'
-            justify='center'
-            gap='$2'
-            style={{
-              borderRadius: 8,
-            }}
-          >
-            {downloadState.isDownloading ? (
-              <ActivityIndicator color='white' />
-            ) : (
-              <>
-                <Download size={18} color='white' />
-
-                <Text color='white'>Descargar</Text>
-              </>
-            )}
-          </XStack>
-        </Pressable>
-      ) : null}
-
-      {downloadState.error ? (
-        <Text fontSize='$2' color='$red10'>
-          {downloadState.error}
-        </Text>
-      ) : null}
     </YStack>
   );
 }

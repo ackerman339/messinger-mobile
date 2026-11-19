@@ -1,0 +1,5 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": { "modules": ["PulseDownloadsModule"] },
+  "android": { "modules": ["expo.modules.pulsedownloads.PulseDownloadsModule"] }
+}

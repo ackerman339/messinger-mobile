@@ -17,7 +17,8 @@ type CachedUrl = {
   expiresAt: number;
 };
 
-const attachmentsDirectory = new Directory(Paths.document, 'attachments');
+const cachedAttachmentsDirectory = new Directory(Paths.cache, 'attachments');
+const privateAttachmentsDirectory = new Directory(Paths.document, 'attachments');
 
 export function AttachmentProvider({ children }: AttachmentProviderProps) {
   const urlCacheRef = useRef<Map<string, CachedUrl>>(new Map());
@@ -32,13 +33,14 @@ export function AttachmentProvider({ children }: AttachmentProviderProps) {
    * Return the local file associated
    * with an attachment.
    */
-  const getLocalFile = useCallback((attachmentId: string, fileName: string) => {
-    const extension = getFileExtension(fileName);
-
-    const localFileName = extension ? `${attachmentId}.${extension}` : attachmentId;
-
-    return new File(attachmentsDirectory, localFileName);
-  }, []);
+  const getLocalFile = useCallback(
+    (attachmentId: string, fileName: string, directory = cachedAttachmentsDirectory) => {
+      const extension = getFileExtension(fileName);
+      const localFileName = extension ? `${attachmentId}.${extension}` : attachmentId;
+      return new File(directory, localFileName);
+    },
+    [],
+  );
 
   /**
    * Return a valid cached URL.
@@ -107,11 +109,11 @@ export function AttachmentProvider({ children }: AttachmentProviderProps) {
     (attachmentId: string, fileName: string) => {
       const file = getLocalFile(attachmentId, fileName);
 
-      if (!file.exists) {
-        return undefined;
-      }
+      if (file.exists) return file.uri;
 
-      return file.uri;
+      // Includes previously downloaded attachments and voice notes.
+      const privateFile = getLocalFile(attachmentId, fileName, privateAttachmentsDirectory);
+      return privateFile.exists ? privateFile.uri : undefined;
     },
     [getLocalFile],
   );
@@ -154,169 +156,57 @@ export function AttachmentProvider({ children }: AttachmentProviderProps) {
     });
   }, []);
 
-  /**
-   * Download an attachment to the
-   * local filesystem.
-   */
   const downloadAttachment = useCallback(
-    async (attachmentId: string, fileName: string) => {
-      /**
-       * Check whether the file already
-       * exists on the device.
-       */
-      const existingUri = getLocalUri(attachmentId, fileName);
+    async (attachmentId: string, fileName: string, { keepForPlayback = false } = {}) => {
+      const localUri = getLocalUri(attachmentId, fileName);
+      if (localUri) return localUri;
 
-      if (existingUri) {
-        setDownloadStates((previous) => {
-          const next = new Map(previous);
-
-          next.set(attachmentId, {
-            isDownloading: false,
-            isDownloaded: true,
-            error: null,
-          });
-
-          return next;
-        });
-
-        return existingUri;
-      }
-
-      /**
-       * Reuse an existing download
-       * if another component is already
-       * downloading the same attachment.
-       */
       const pending = pendingDownloadsRef.current.get(attachmentId);
+      if (pending) return pending;
 
-      if (pending) {
-        return pending;
-      }
-
-      /**
-       * Only download using a valid
-       * cached URL.
-       *
-       * We intentionally don't request
-       * a new URL here.
-       */
-      const url = getCachedUrl(attachmentId);
-
-      if (!url) {
-        const error = new Error('La URL de descarga ha expirado.');
-
-        setDownloadStates((previous) => {
-          const next = new Map(previous);
-
-          next.set(attachmentId, {
-            isDownloading: false,
-            isDownloaded: false,
-            error: error.message,
-          });
-
-          return next;
-        });
-
-        throw error;
-      }
-
-      /**
-       * Mark the attachment as downloading
-       * before starting the filesystem operation.
-       */
-      setDownloadStates((previous) => {
-        const next = new Map(previous);
-
-        next.set(attachmentId, {
+      setDownloadStates((previous) =>
+        new Map(previous).set(attachmentId, {
           isDownloading: true,
           isDownloaded: false,
           error: null,
-        });
-
-        return next;
-      });
+        }),
+      );
 
       const download = (async () => {
         try {
-          if (!attachmentsDirectory.exists) {
-            attachmentsDirectory.create({
-              intermediates: true,
-            });
+          const url = await getDownloadUrl(attachmentId);
+          const directory = keepForPlayback ? privateAttachmentsDirectory : cachedAttachmentsDirectory;
+          directory.create({ idempotent: true, intermediates: true });
+          const file = getLocalFile(attachmentId, fileName, directory);
+          const partial = new File(directory, `${file.name}.part`);
+
+          // Expose a local URI only after the transfer has finished.
+          try {
+            await File.downloadFileAsync(url, partial, { idempotent: true });
+            partial.move(file);
+          } catch (error) {
+            urlCacheRef.current.delete(attachmentId);
+            if (partial.exists) partial.delete();
+            throw error;
           }
 
-          /**
-           * Check again in case another
-           * operation created the file.
-           */
-          const existing = getLocalUri(attachmentId, fileName);
-
-          if (existing) {
-            setDownloadStates((previous) => {
-              const next = new Map(previous);
-
-              next.set(attachmentId, {
-                isDownloading: false,
-                isDownloaded: true,
-                error: null,
-              });
-
-              return next;
-            });
-
-            return existing;
-          }
-
-          const file = getLocalFile(attachmentId, fileName);
-
-          /**
-           * Download directly from R2
-           * to the permanent local file.
-           */
-          await File.downloadFileAsync(url, file);
-
-          /**
-           * Verify that the file
-           * actually exists.
-           */
-          if (!file.exists) {
-            throw new Error('El archivo no se pudo guardar correctamente.');
-          }
-
-          /**
-           * Mark the attachment as
-           * successfully downloaded.
-           *
-           * This state update causes
-           * all consumers to re-render.
-           */
-          setDownloadStates((previous) => {
-            const next = new Map(previous);
-
-            next.set(attachmentId, {
+          setDownloadStates((previous) =>
+            new Map(previous).set(attachmentId, {
               isDownloading: false,
               isDownloaded: true,
               error: null,
-            });
-
-            return next;
-          });
+            }),
+          );
 
           return file.uri;
         } catch (error) {
-          const message = error instanceof Error ? error.message : 'Error al descargar el archivo.';
-
-          setDownloadStates((previous) => {
-            const next = new Map(previous);
-
-            next.set(attachmentId, {
+          setDownloadStates((previous) =>
+            new Map(previous).set(attachmentId, {
               isDownloading: false,
               isDownloaded: false,
-              error: message,
-            });
-
-            return next;
-          });
-
+              error: error instanceof Error ? error.message : 'Error al descargar el archivo.',
+            }),
+          );
           throw error;
         } finally {
           pendingDownloadsRef.current.delete(attachmentId);
@@ -324,10 +214,9 @@ export function AttachmentProvider({ children }: AttachmentProviderProps) {
       })();
 
       pendingDownloadsRef.current.set(attachmentId, download);
-
       return download;
     },
-    [getCachedUrl, getLocalFile, getLocalUri],
+    [getDownloadUrl, getLocalFile, getLocalUri],
   );
 
   return (
