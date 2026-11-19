@@ -1,6 +1,7 @@
 import { GroupCallProvider } from '@/src/group-calls/group-call-provider';
 import { GroupCallPanel } from '@/src/group-calls/group-call-panel';
-import { KeyboardAvoidingView, Platform } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Keyboard, KeyboardAvoidingView, Platform, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   withTiming,
@@ -23,8 +24,32 @@ import { COLORS } from '@/src/lib/constants';
 
 function ChatContent() {
   const { activeConversation } = useChatContext();
-  const composerUsesSafeArea =
-    Platform.OS === 'android' && !!activeConversation && !activeConversation.invitation;
+  const isAndroid = Platform.OS === 'android';
+  const [keyboardVisible, setKeyboardVisible] = useState(
+    () => isAndroid && Keyboard.isVisible(),
+  );
+  const hasAndroidComposer =
+    isAndroid && !!activeConversation && !activeConversation.invitation;
+  // Android's hide event can report a frame above the bottom of the screen.
+  const keyboardBehavior =
+    Platform.OS === 'ios' || keyboardVisible ? 'padding' : undefined;
+
+  useEffect(() => {
+    if (!isAndroid) return;
+
+    const show = Keyboard.addListener('keyboardDidShow', () =>
+      setKeyboardVisible(true),
+    );
+    const hide = Keyboard.addListener('keyboardDidHide', () =>
+      setKeyboardVisible(false),
+    );
+
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, [isAndroid]);
+
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [
       {
@@ -37,46 +62,47 @@ function ChatContent() {
 
   return (
     <SafeAreaView
-      edges={composerUsesSafeArea ? ['top', 'left', 'right'] : undefined}
+      edges={hasAndroidComposer ? ['top', 'left', 'right'] : undefined}
       style={{ flex: 1 }}
     >
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
-        <ConversationList />
-        {activeConversation && (
-          <Animated.View
-            key={activeConversation.id}
-            style={[
-              {
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-              },
-              animatedStyle,
-            ]}
-          >
-            <YStack flex={1} bg='$background'>
-              <ChatHeader />
-              {activeConversation.invitation ? (
-                <GroupInvitationPanel key={activeConversation.id} />
-              ) : (
-                <>
-                  <MessageList key={activeConversation.id} />
-                  <SafeAreaView
-                    edges={composerUsesSafeArea ? ['bottom'] : []}
-                    style={{ backgroundColor: COLORS['bg-app'] }}
-                  >
-                    <MessageComposer key={activeConversation.id} />
-                  </SafeAreaView>
-                </>
-              )}
-            </YStack>
-          </Animated.View>
-        )}
+      <KeyboardAvoidingView behavior={keyboardBehavior} style={{ flex: 1 }}>
+        <View style={{ flex: 1 }}>
+          <ConversationList />
+          {activeConversation && (
+            <Animated.View
+              key={activeConversation.id}
+              style={[
+                {
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                },
+                animatedStyle,
+              ]}
+            >
+              <YStack flex={1} bg='$background'>
+                <ChatHeader />
+                {activeConversation.invitation ? (
+                  <GroupInvitationPanel key={activeConversation.id} />
+                ) : (
+                  <>
+                    <MessageList key={activeConversation.id} />
+                    <SafeAreaView
+                      edges={
+                        hasAndroidComposer && !keyboardVisible ? ['bottom'] : []
+                      }
+                      style={{ backgroundColor: COLORS['bg-app'] }}
+                    >
+                      <MessageComposer key={activeConversation.id} />
+                    </SafeAreaView>
+                  </>
+                )}
+              </YStack>
+            </Animated.View>
+          )}
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

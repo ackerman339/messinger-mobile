@@ -331,9 +331,12 @@ test('pending invitations never mount message history or composer on the chat sc
     GroupInvitationPanel = () => null;
   const component = (name) => ({ [name]: () => null });
   const ChatPage = load('../app/chat.tsx', {
+    react: { useState: (initialize) => [initialize()], useEffect: () => {} },
     'react-native': {
+      Keyboard: { isVisible: () => false },
       KeyboardAvoidingView: 'KeyboardAvoidingView',
       Platform: { OS: 'android' },
+      View: 'View',
     },
     'react-native-reanimated': {
       __esModule: true,

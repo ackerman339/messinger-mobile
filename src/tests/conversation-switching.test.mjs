@@ -265,8 +265,10 @@ function nodes(node) {
   return [node, ...nodes(node.props?.children)];
 }
 for (const desktop of mobile ? [false] : [false, true]) {
-  test(`the ${mobile ? 'native' : desktop ? 'desktop' : 'small-screen web'} view mounts one conversation pane and resets its complete UI when switching`, () => {
+  test(`the ${mobile ? 'native' : desktop ? 'desktop' : 'small-screen web'} view mounts one conversation pane and resets its complete UI when switching`, async (t) => {
     let conversation = { id: 'group' };
+    let keyboardVisible, cleanupKeyboard;
+    const keyboardListeners = new Map();
     const ConversationList = () => null,
       MessageList = () => null,
       MessageComposer = () => null,
@@ -274,9 +276,29 @@ for (const desktop of mobile ? [false] : [false, true]) {
     const component = (name) => ({ [name]: () => null });
     const dependencies = mobile
       ? {
+          react: {
+            useState(initialize) {
+              keyboardVisible ??= initialize();
+              return [
+                keyboardVisible,
+                (visible) => (keyboardVisible = visible),
+              ];
+            },
+            useEffect(effect) {
+              cleanupKeyboard ??= effect();
+            },
+          },
           'react-native': {
+            Keyboard: {
+              isVisible: () => false,
+              addListener(event, callback) {
+                keyboardListeners.set(event, callback);
+                return { remove: () => keyboardListeners.delete(event) };
+              },
+            },
             KeyboardAvoidingView: 'KeyboardAvoidingView',
             Platform: { OS: 'android' },
+            View: 'View',
           },
           'react-native-reanimated': {
             __esModule: true,
@@ -340,10 +362,36 @@ for (const desktop of mobile ? [false] : [false, true]) {
     const first = render();
     if (mobile) {
       assert.deepEqual(first.props.edges, ['top', 'left', 'right']);
-      const footer = nodes(first).find(
-        (node) => node.type === 'SafeAreaView' && node.props.edges.includes('bottom'),
-      );
-      assert.equal(footer.props.children.type, MessageComposer);
+      const footer = (tree) =>
+        nodes(tree).find(
+          (node) =>
+            node.type === 'SafeAreaView' &&
+            node.props.children?.type === MessageComposer,
+        );
+      assert.deepEqual(footer(first).props.edges, ['bottom']);
+
+      await t.test('Android restores the composer after the keyboard closes', () => {
+        const keyboardView = (tree) => tree.props.children;
+        assert.equal(keyboardView(first).props.behavior, undefined);
+
+        for (let cycle = 0; cycle < 2; cycle++) {
+          keyboardListeners.get('keyboardDidShow')();
+          const open = render();
+          assert.equal(keyboardView(open).props.behavior, 'padding');
+          const viewport = keyboardView(open).props.children;
+          assert.equal(viewport.props.style.flex, 1);
+          assert.ok(nodes(viewport).some((node) => node.type === 'AnimatedView'));
+          assert.deepEqual(footer(open).props.edges, []);
+
+          // These coordinates can still make React Native calculate an overlap.
+          keyboardListeners.get('keyboardDidHide')({
+            endCoordinates: { height: 0, screenY: 752 },
+          });
+          const closed = render();
+          assert.equal(keyboardView(closed).props.behavior, undefined);
+          assert.deepEqual(footer(closed).props.edges, ['bottom']);
+        }
+      });
     }
     for (const component of [
       ConversationList,
@@ -363,5 +411,9 @@ for (const desktop of mobile ? [false] : [false, true]) {
     assert.equal(pane(first).key, 'group');
     conversation = { id: 'private' };
     assert.equal(pane(render()).key, 'private');
+    if (mobile) {
+      cleanupKeyboard();
+      assert.equal(keyboardListeners.size, 0);
+    }
   });
 }
