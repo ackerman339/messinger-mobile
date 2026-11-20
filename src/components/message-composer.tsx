@@ -1,3 +1,4 @@
+import { LocationCompose } from './location-compose';
 import { ChevronRight, Smile } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import { Keyboard, Pressable, Text, TextInput, View } from 'react-native';
@@ -24,6 +25,7 @@ export function MessageComposer() {
 
   const [message, setMessage] = useState('');
   const [sendError, setSendError] = useState('');
+  const [locationOpen, setLocationOpen] = useState(false);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
 
   const [selection, setSelection] = useState({
@@ -184,6 +186,17 @@ export function MessageComposer() {
 
   return (
     <View className='border-t border-border bg-bg-app px-3 py-2'>
+      {locationOpen && (
+        <LocationCompose
+          onClose={() => setLocationOpen(false)}
+          onSend={(location) => {
+            const content = location.expiresAt ? 'Ubicación en tiempo real' : 'Ubicación compartida';
+            const saved = handleSendMessage(content, [], location);
+            if (saved) setLocationOpen(false);
+            return saved;
+          }}
+        />
+      )}
       {sendError ? <Text accessibilityRole='alert' className='pb-2 text-red-600'>{sendError}</Text> : null}
       {isRecording ? (
         <View style={{ height: 44 }}>
@@ -200,6 +213,7 @@ export function MessageComposer() {
             <AttachmentMenu
               disabled={disabled || isLoadingAttachment}
               onFilesSelected={uploadFiles}
+              onLocationSelected={() => setLocationOpen(true)}
             />
 
             <Pressable

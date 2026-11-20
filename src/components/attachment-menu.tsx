@@ -14,6 +14,7 @@ import {
   Image,
   Paperclip,
   Plus,
+  MapPin,
   Video,
 } from 'lucide-react-native';
 import { useState } from 'react';
@@ -24,12 +25,14 @@ import type { LocalFile } from '@/src/types/file';
 
 type AttachmentMenuProps = {
   disabled?: boolean;
+  onLocationSelected: () => void;
   onFilesSelected: (files: LocalFile[]) => void;
 };
 
 export function AttachmentMenu({
   disabled = false,
   onFilesSelected,
+  onLocationSelected,
 }: AttachmentMenuProps) {
   const [open, setOpen] = useState(false);
 
@@ -135,7 +138,7 @@ export function AttachmentMenu({
           pressStyle={{
             bg: '$backgroundHover',
           }}
-          accessibilityLabel='Enviar archivo'
+          accessibilityLabel='Adjuntos'
         >
           <Plus
             size={20}
@@ -153,6 +156,14 @@ export function AttachmentMenu({
         elevation='$4'
       >
         <YStack>
+          <AttachmentItem
+            icon={<MapPin size={20} color={COLORS['text-primary']} />}
+            label='Ubicación'
+            onPress={() => {
+              setOpen(false);
+              onLocationSelected();
+            }}
+          />
           <AttachmentItem
             icon={<Image size={20} color={COLORS['text-primary']} />}
             label='Fotos'

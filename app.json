@@ -83,6 +83,12 @@
         }
       ],
       "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Permite que Pulse obtenga tu ubicación para compartirla en el chat."
+        }
+      ],
       "expo-audio",
       "expo-video",
       [

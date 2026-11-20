@@ -1,3 +1,4 @@
+import type { LocationInput } from '../types/location';
 import { messageSync } from '@/src/services/message-sync';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { AppState, BackHandler } from 'react-native';
@@ -387,7 +388,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  function handleSendMessage(content: string, attachments: FileAttachment[] = []) {
+  function handleSendMessage(content: string, attachments: FileAttachment[] = [], location?: LocationInput) {
     const userId = user?.id;
     const current = activeConversation && conversationsRef.current.get(activeConversation.id);
     if (!userId || activeConversation?.invitation || activeConversation?.isDeleted || current?.isDeleted) {
@@ -396,7 +397,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     if (activeConversation?.type === 'GROUP') {
       return messageSync.enqueue(userId, {
         type: WS_CLIENT_EVENTS.SEND_GROUP_MESSAGE,
-        data: { content, attachments, conversationId: activeConversation.id },
+        data: { content, attachments, location, conversationId: activeConversation.id },
       });
     }
     const targetReceiverId = activeConversation
@@ -405,7 +406,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     if (!targetReceiverId) return false;
     return messageSync.enqueue(userId, {
       type: WS_CLIENT_EVENTS.SEND_PRIVATE_MESSAGE,
-      data: { content, attachments, receiverId: targetReceiverId },
+      data: { content, attachments, location, receiverId: targetReceiverId },
     });
   }
 

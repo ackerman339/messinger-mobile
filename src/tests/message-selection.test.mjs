@@ -36,7 +36,7 @@ function fixture(ids, messages, activeConversation = { id: 'chat' }) {
   let stateIndex = 0;
   const react = {
     useState: (value) => [
-      stateIndex++ === 0 ? ids : value,
+      stateIndex++ === 0 ? ids : typeof value === 'function' ? value() : value,
       (next) => updates.push(next),
     ],
     useRef: (current) => ({ current }),
@@ -53,7 +53,7 @@ function fixture(ids, messages, activeConversation = { id: 'chat' }) {
       if (name === 'react') return react;
       if (name === '@react-navigation/native') return { useIsFocused: () => true };
       if (name.includes('services/message-sync')) return {
-        messageSync: { getSnapshot: () => ({ pending: [], updates: new Map(), connected: true, connectionEpoch: 1 }) },
+        messageSync: { getSnapshot: () => ({ pending: [], updates: new Map(), connected: true, connectionEpoch: 1 }), cancelLocationTracking() {} },
         getDeliveryStatus: () => 'SENT',
         pendingForConversation: () => [],
       };

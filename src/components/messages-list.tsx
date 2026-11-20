@@ -1,3 +1,6 @@
+import { LocationContent } from './location-content';
+import { mergeLocation } from '../types/location';
+import type { LocationState } from '../types/location';
 import { useIsFocused } from '@react-navigation/native';
 import { messageSync, pendingForConversation, getDeliveryStatus, mergeMessageHistory } from '@/src/services/message-sync';
 import { MessageDeliveryIcon } from './message-delivery-icon';
@@ -81,7 +84,7 @@ export function MessageList() {
     deps: [conversationId],
   });
 
-  const { pending, connectionEpoch, updates } = useSyncExternalStore(
+  const { pending, connectionEpoch, updates, locations } = useSyncExternalStore(
     messageSync.subscribe,
     messageSync.getSnapshot,
     messageSync.getServerSnapshot,
@@ -107,6 +110,7 @@ export function MessageList() {
   const isFocused = useIsFocused();
   const focused = useRef(isFocused);
   const visible = useRef<ViewToken<Message>[]>([]);
+  const [visibleLocations, setVisibleLocations] = useState<ReadonlySet<string>>(() => new Set());
   const markVisibleRead = useCallback(() => {
     if (!focused.current || AppState.currentState !== 'active') return;
     for (const { item, isViewable } of visible.current) {
@@ -117,6 +121,9 @@ export function MessageList() {
   }, [conversationId]);
   const onViewableItemsChanged = useCallback(({ viewableItems }: { viewableItems: ViewToken<Message>[] }) => {
     visible.current = viewableItems;
+    const next = new Set(viewableItems.filter(({ isViewable, item }) => isViewable && item.location)
+      .map(({ item }) => item.messageId || item.id));
+    setVisibleLocations((previous) => previous.size === next.size && [...next].every((id) => previous.has(id)) ? previous : next);
     markVisibleRead();
   }, [markVisibleRead]);
   useEffect(() => {
@@ -464,6 +471,7 @@ export function MessageList() {
         messagesIds: selectedMessageIds,
       });
 
+      selectedMessageIds.forEach((id) => messageSync.cancelLocationTracking(id));
       setItems((current) =>
         current.filter((message) => {
           const messageId = message.messageId || message.id;
@@ -485,13 +493,15 @@ export function MessageList() {
       return (
         <MessageBubble
           message={item}
+          locationUpdate={locations?.get(messageId)}
+          locationVisible={visibleLocations?.has(messageId) ?? false}
           status={item.localStatus ?? getDeliveryStatus(item.deliveries ?? [], updates.get(messageId))}
           selected={selectedMessageIds.includes(messageId)}
           onSelect={toggleMessageSelection}
         />
       );
     },
-    [selectedMessageIds, toggleMessageSelection, updates],
+    [locations, selectedMessageIds, toggleMessageSelection, updates, visibleLocations],
   );
 
   const keyExtractor = useCallback(
@@ -564,6 +574,8 @@ export function MessageList() {
 }
 
 type MessageBubbleProps = {
+  locationUpdate?: LocationState;
+  locationVisible?: boolean;
   status: React.ComponentProps<typeof MessageDeliveryIcon>['status'];
   message: Message;
   selected: boolean;
@@ -572,6 +584,8 @@ type MessageBubbleProps = {
 
 function MessageBubble({
   message,
+  locationUpdate,
+  locationVisible = false,
   status,
   selected,
   onSelect,
@@ -609,6 +623,13 @@ function MessageBubble({
       : null;
   const isLink = /^https?:\/\/\S+$/.test(message.content.trim());
   const messageId = message.messageId || message.id;
+  const location = locationUpdate ? mergeLocation(message.location, locationUpdate) : message.location;
+
+  function stopLocation() {
+    if (messageSync.stopLocation(message)) return;
+    Alert.alert('No se pudo guardar el cambio.');
+  }
+
 
   function handlePress() {
     if (message.localStatus === 'FAILED') {
@@ -647,14 +668,24 @@ function MessageBubble({
               {senderName}
             </Text>
           )}
-          <Text
-            fontSize='$3'
-            lineHeight={20}
-            color={isLink ? '$accent' : '$textPrimary'}
-            textDecorationLine={isLink ? 'underline' : 'none'}
-          >
-            {message.content}
-          </Text>
+          {location ? (
+            <LocationContent
+              location={location}
+              pending={message.localStatus === 'PENDING'}
+              visible={locationVisible}
+              onStop={isOwn && !activeConversation?.isDeleted && message.localStatus !== 'FAILED' ? stopLocation : undefined}
+            />
+          ) : (
+            <Text
+              fontSize='$3'
+              lineHeight={20}
+              color={isLink ? '$accent' : '$textPrimary'}
+              textDecorationLine={isLink ? 'underline' : 'none'}
+            >
+              {message.content}
+            </Text>
+          )}
+
           {message.attachments?.length ? (
             <YStack gap='$2' my='$2'>
               {message.attachments.map((attachment) => message.localStatus ? (

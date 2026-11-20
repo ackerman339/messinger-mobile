@@ -102,8 +102,14 @@ function startMessageTransport(source: WebSocket, userId: string) {
       replaceSocket(source);
     }
   }, 25_000);
-  messageSync.authenticated(userId, ({ type, data, id }) =>
-    sendFrame(source, { type, data, requestId: id }),
+  messageSync.authenticated(
+    userId,
+    ({ type, data, id }) => sendFrame(source, { type, data, requestId: id }),
+    (data) => sendFrame(source, {
+      type: WS_CLIENT_EVENTS.LOCATION_UPDATE,
+      data,
+      requestId: `location-update:${data.messageId}`,
+    }),
   );
 }
 
